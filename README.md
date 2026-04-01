@@ -39,7 +39,7 @@ Built on the public porting workspace from [instructkr/claw-code](https://github
 | 🧠 **Context Engine** | Automatic context building with CLAUDE.md discovery and usage reporting |
 | 🔄 **Session Persistence** | Save and resume agent sessions across runs |
 | 🔐 **Permission System** | Granular control: `--allow-write`, `--allow-shell`, `--unsafe` |
-| 🏗️ **OpenAI-Compatible** | Works with any OpenAI-compatible model server (vLLM, Ollama, etc.) |
+| 🏗️ **OpenAI-Compatible Runtime** | Python client targets an OpenAI-compatible API, with `vLLM` as the documented setup |
 | 🐉 **Qwen3-Coder** | First-class support for `Qwen3-Coder-30B-A3B-Instruct` via vLLM |
 
 ---
@@ -118,7 +118,7 @@ claw-code/
 | Requirement | Details |
 |-------------|---------|
 | 🐍 Python | `3.10` or higher |
-| 🖥️ Model Server | Any OpenAI-compatible server (vLLM recommended) |
+| 🖥️ Model Server | `vLLM` with tool calling enabled |
 | 🧠 Model | [`Qwen/Qwen3-Coder-30B-A3B-Instruct`](https://huggingface.co/Qwen/Qwen3-Coder-30B-A3B-Instruct) (recommended) |
 
 ---
@@ -153,6 +153,34 @@ export OPENAI_BASE_URL=http://127.0.0.1:8000/v1
 export OPENAI_API_KEY=local-token
 export OPENAI_MODEL=Qwen/Qwen3-Coder-30B-A3B-Instruct
 ```
+
+### Use Another Model With vLLM
+
+If you want to try another model, keep the same `vLLM` server setup and change the `--model` value when you launch `vLLM`.
+
+Example:
+
+```bash
+python -m vllm.entrypoints.openai.api_server \
+  --model your-model-name \
+  --host 127.0.0.1 \
+  --port 8000 \
+  --enable-auto-tool-choice \
+  --tool-call-parser your_parser
+```
+
+Then update:
+
+```bash
+export OPENAI_MODEL=your-model-name
+```
+
+Notes:
+
+- the documented path in this repository is `vLLM`
+- the model must support tool calling well enough for agent use
+- some model families require a different `--tool-call-parser`
+- slash commands such as `/help`, `/context`, and `/tools` are local and do not require the model server
 
 ### 3. Run the Agent
 
