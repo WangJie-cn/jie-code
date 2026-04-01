@@ -1,62 +1,133 @@
-# Claw Code Agent
-
 <p align="center">
-  <img src="images/logo.png" alt="Claw Code Agent logo" width="500" />
+  <img src="images/logo.png" alt="Claw Code Agent logo" width="420" />
 </p>
 
-Implementation of the Claude Code npm source architecture in Python.
+<h1 align="center">Claw Code Agent</h1>
 
-This repository builds on the public porting workspace from [instructkr/claw-code](https://github.com/instructkr/claw-code) and extends it into a usable Python local-model agent. The active repository is [HarnessLab/claw-code-agent](https://github.com/HarnessLab/claw-code-agent). The goal is not to ship the npm source itself, but to reimplement the agent flow in Python: prompt assembly, context building, slash commands, tool calling, and local model execution.
+<p align="center">
+  <em>A Python reimplementation of the Claude Code agent architecture — local models, full control.</em>
+</p>
 
-## Status
+<p align="center">
+  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.10%2B-3776AB?logo=python&logoColor=white" alt="Python 3.10+"></a>
+  <a href="https://github.com/HarnessLab/claw-code-agent"><img src="https://img.shields.io/badge/repo-HarnessLab%2Fclaw--code--agent-181717?logo=github" alt="GitHub"></a>
+  <a href="https://docs.vllm.ai/"><img src="https://img.shields.io/badge/backend-vLLM-FF6F00?logo=lightning&logoColor=white" alt="vLLM"></a>
+  <a href="https://huggingface.co/Qwen/Qwen3-Coder-30B-A3B-Instruct"><img src="https://img.shields.io/badge/model-Qwen3--Coder-FFD21E?logo=huggingface&logoColor=black" alt="Qwen3-Coder"></a>
+  <img src="https://img.shields.io/badge/status-alpha-orange" alt="Alpha">
+  <img src="https://img.shields.io/badge/license-open--source-green" alt="License">
+</p>
 
-The Python runtime is working, but it is not full feature parity with the npm implementation yet.
+---
 
-Implemented now:
+## 📖 About
 
-- Python CLI agent loop
-- OpenAI-compatible local model backend
-- Qwen3-Coder support through `vLLM`
-- core tools: file read/write/edit, glob, grep, shell
-- context building and `/context`-style usage reporting
-- local slash commands such as `/help`, `/context`, `/tools`, `/memory`, `/status`
-- unit tests for the Python runtime
+This repository reimplements the [Claude Code](https://docs.anthropic.com/en/docs/claude-code) npm agent architecture **entirely in Python**, designed to run with **local open-source models** via an OpenAI-compatible API server.
 
-Not complete yet:
+Built on the public porting workspace from [instructkr/claw-code](https://github.com/instructkr/claw-code), the active development lives at [HarnessLab/claw-code-agent](https://github.com/HarnessLab/claw-code-agent).
 
-- full plugin and MCP parity
-- complete slash-command parity
-- full interactive REPL/session persistence parity
-- tokenizer-accurate context accounting
+> **Goal:** Not to ship the original npm source, but to reimplement the full agent flow in Python — prompt assembly, context building, slash commands, tool calling, session persistence, and local model execution.
 
-## Repository Layout
+---
+
+## ✨ Key Features
+
+| Feature | Description |
+|---------|-------------|
+| 🤖 **Agent Loop** | Full agentic coding loop with tool calling and iterative reasoning |
+| 🧰 **Core Tools** | File read / write / edit, glob search, grep search, shell execution |
+| 💬 **Slash Commands** | Local commands: `/help`, `/context`, `/tools`, `/memory`, `/status`, `/model`, and more |
+| 🧠 **Context Engine** | Automatic context building with CLAUDE.md discovery and usage reporting |
+| 🔄 **Session Persistence** | Save and resume agent sessions across runs |
+| 🔐 **Permission System** | Granular control: `--allow-write`, `--allow-shell`, `--unsafe` |
+| 🏗️ **OpenAI-Compatible** | Works with any OpenAI-compatible model server (vLLM, Ollama, etc.) |
+| 🐉 **Qwen3-Coder** | First-class support for `Qwen3-Coder-30B-A3B-Instruct` via vLLM |
+
+---
+
+## 📋 Roadmap
+
+### Done
+
+- [x] Python CLI agent loop
+- [x] OpenAI-compatible local model backend
+- [x] Qwen3-Coder support through vLLM with `qwen3_xml` tool parser
+- [x] Core tools: `list_dir`, `read_file`, `write_file`, `edit_file`, `glob_search`, `grep_search`, `bash`
+- [x] Context building and `/context`-style usage reporting
+- [x] Slash commands: `/help`, `/context`, `/context-raw`, `/prompt`, `/permissions`, `/model`, `/tools`, `/memory`, `/status`, `/clear`
+- [x] Session persistence and `agent-resume` flow
+- [x] Permission system (read-only, write, shell, unsafe tiers)
+- [x] Unit tests for the Python runtime
+- [x] `pyproject.toml` packaging with `setuptools`
+
+### In Progress
+
+- [ ] Full plugin and MCP server parity
+- [ ] Complete slash-command parity with npm runtime
+- [ ] Full interactive REPL / session persistence parity
+- [ ] Tokenizer-accurate context accounting
+- [ ] Remote runtime modes (SSH, teleport, deep-link)
+- [ ] Voice and VIM modes
+- [ ] Hooks system
+- [ ] Cost tracking and budget limits
+
+---
+
+## 🏗️ Architecture
 
 ```text
 claw-code/
 ├── README.md
+├── pyproject.toml
 ├── .gitignore
-├── src/
-└── tests/
+├── images/
+│   └── logo.png
+├── src/                          # Python implementation
+│   ├── main.py                   # CLI entry point & argument parsing
+│   ├── agent_runtime.py          # Core agent loop (LocalCodingAgent)
+│   ├── agent_tools.py            # Tool definitions & execution engine
+│   ├── agent_prompting.py        # System prompt assembly
+│   ├── agent_context.py          # Context building & CLAUDE.md discovery
+│   ├── agent_context_usage.py    # Context usage estimation & reporting
+│   ├── agent_session.py          # Session state management
+│   ├── agent_slash_commands.py   # Local slash command processing
+│   ├── agent_types.py            # Shared dataclasses & type definitions
+│   ├── openai_compat.py          # OpenAI-compatible API client
+│   ├── session_store.py          # Session serialization & persistence
+│   ├── permissions.py            # Tool permission filtering
+│   ├── tools.py                  # Mirrored tool inventory
+│   ├── commands.py               # Mirrored command inventory
+│   ├── ...                       # 75+ modules across 30+ packages
+│   ├── plugins/                  # Plugin subsystem (WIP)
+│   ├── hooks/                    # Hook system (WIP)
+│   ├── remote/                   # Remote runtime modes (WIP)
+│   ├── voice/                    # Voice mode (WIP)
+│   └── vim/                      # VIM mode (WIP)
+└── tests/                        # Unit tests
+    ├── test_agent_runtime.py
+    ├── test_agent_context.py
+    ├── test_agent_context_usage.py
+    ├── test_agent_prompting.py
+    ├── test_agent_slash_commands.py
+    └── test_porting_workspace.py
 ```
 
-`src/` contains the Python implementation.
+---
 
-`tests/` contains the unit tests for the Python runtime.
+## 📦 Requirements
 
-## Requirements
+| Requirement | Details |
+|-------------|---------|
+| 🐍 Python | `3.10` or higher |
+| 🖥️ Model Server | Any OpenAI-compatible server (vLLM recommended) |
+| 🧠 Model | [`Qwen/Qwen3-Coder-30B-A3B-Instruct`](https://huggingface.co/Qwen/Qwen3-Coder-30B-A3B-Instruct) (recommended) |
 
-- Python 3.10+
-- a local OpenAI-compatible model server
-- recommended model: `Qwen/Qwen3-Coder-30B-A3B-Instruct`
+---
 
-## Start `vLLM` With Qwen3-Coder
+## 🚀 Quick Start
 
-For Qwen3-Coder tool calling, `vLLM` must be started with automatic tool choice enabled. The official `vLLM` tool-calling docs describe `--enable-auto-tool-choice` and `--tool-call-parser`, and Qwen3-Coder should use the `qwen3_xml` parser:
+### 1. Start vLLM with Qwen3-Coder
 
-- https://docs.vllm.ai/en/v0.13.0/features/tool_calling/
-- https://docs.vllm.ai/en/v0.13.0/serving/openai_compatible_server.html
-
-Example:
+vLLM must be started with automatic tool choice enabled. Use the `qwen3_xml` parser for Qwen3-Coder tool calling:
 
 ```bash
 python -m vllm.entrypoints.openai.api_server \
@@ -67,15 +138,15 @@ python -m vllm.entrypoints.openai.api_server \
   --tool-call-parser qwen3_xml
 ```
 
-Check that the server is up:
+Verify the server is running:
 
 ```bash
 curl http://127.0.0.1:8000/v1/models
 ```
 
-## Environment Setup
+> 📚 **References:** [vLLM Tool Calling Docs](https://docs.vllm.ai/en/v0.13.0/features/tool_calling/) · [OpenAI-Compatible Server](https://docs.vllm.ai/en/v0.13.0/serving/openai_compatible_server.html)
 
-From the `claw-code/` directory:
+### 2. Configure Environment
 
 ```bash
 export OPENAI_BASE_URL=http://127.0.0.1:8000/v1
@@ -83,143 +154,141 @@ export OPENAI_API_KEY=local-token
 export OPENAI_MODEL=Qwen/Qwen3-Coder-30B-A3B-Instruct
 ```
 
-## How To Run
-
-Show the agent system prompt:
+### 3. Run the Agent
 
 ```bash
-python3 -m src.main agent-prompt --cwd .
-```
-
-Show estimated context usage:
-
-```bash
-python3 -m src.main agent-context --cwd .
-```
-
-Show the raw context snapshot:
-
-```bash
-python3 -m src.main agent-context-raw --cwd .
-```
-
-Run a read-only repo question:
-
-```bash
+# Read-only question
 python3 -m src.main agent \
   "Read src/agent_runtime.py and summarize how the loop works." \
   --cwd .
-```
 
-Run a write-enabled task:
-
-```bash
+# Write-enabled task
 python3 -m src.main agent \
   "Create TEST_QWEN_AGENT.md with one line: test ok" \
-  --cwd . \
-  --allow-write
-```
+  --cwd . --allow-write
 
-Run a shell-enabled task:
-
-```bash
+# Shell-enabled task
 python3 -m src.main agent \
   "Run pwd and ls src, then summarize the result." \
-  --cwd . \
-  --allow-shell
+  --cwd . --allow-shell
 ```
 
-Show the full transcript:
+---
+
+## 🛠️ Usage
+
+### Agent Commands
+
+| Command | Description |
+|---------|-------------|
+| `agent <prompt>` | Run the agent with a prompt |
+| `agent-prompt` | Show the assembled system prompt |
+| `agent-context` | Show estimated context usage |
+| `agent-context-raw` | Show the raw context snapshot |
+| `agent-resume <id> <prompt>` | Resume a saved session |
+
+### CLI Flags
+
+| Flag | Description |
+|------|-------------|
+| `--cwd <path>` | Set the workspace directory |
+| `--model <name>` | Override the model name |
+| `--base-url <url>` | Override the API base URL |
+| `--allow-write` | Allow the agent to modify files |
+| `--allow-shell` | Allow the agent to execute shell commands |
+| `--unsafe` | Allow destructive shell operations |
+| `--show-transcript` | Print the full message transcript |
+| `--system-prompt <text>` | Set a custom system prompt |
+| `--append-system-prompt <text>` | Append to the system prompt |
+| `--add-dir <path>` | Add extra directories to context |
+
+### Slash Commands
+
+These are handled **locally** before the model loop:
+
+| Command | Aliases | Description |
+|---------|---------|-------------|
+| `/help` | `/commands` | Show built-in slash commands |
+| `/context` | `/usage` | Show estimated session context usage |
+| `/context-raw` | `/env` | Show raw environment & context snapshot |
+| `/prompt` | `/system-prompt` | Render the effective system prompt |
+| `/permissions` | — | Show active tool permission mode |
+| `/model` | — | Show or update the active model |
+| `/tools` | — | List registered tools with permission status |
+| `/memory` | — | Show loaded CLAUDE.md memory bundle |
+| `/status` | `/session` | Show runtime/session status summary |
+| `/clear` | — | Clear ephemeral runtime state |
 
 ```bash
-python3 -m src.main agent \
-  "Explain the current tool registry." \
-  --cwd . \
-  --show-transcript
+python3 -m src.main agent "/help"
+python3 -m src.main agent "/context" --cwd .
+python3 -m src.main agent "/tools" --cwd .
+python3 -m src.main agent "/status" --cwd .
 ```
 
-Each real `agent` run now saves a resumable session and prints:
+### Utility Commands
+
+```bash
+python3 -m src.main summary            # Workspace summary
+python3 -m src.main manifest           # Workspace manifest
+python3 -m src.main commands --limit 10 # Command inventory
+python3 -m src.main tools --limit 10    # Tool inventory
+```
+
+---
+
+## 🔧 Built-in Tools
+
+The agent has access to 7 core tools:
+
+| Tool | Description | Permission |
+|------|-------------|------------|
+| `list_dir` | List files and directories | 🟢 Always |
+| `read_file` | Read file contents (with line ranges) | 🟢 Always |
+| `write_file` | Write or create files | 🟡 `--allow-write` |
+| `edit_file` | Edit files via exact string matching | 🟡 `--allow-write` |
+| `glob_search` | Find files by glob pattern | 🟢 Always |
+| `grep_search` | Search file contents by regex | 🟢 Always |
+| `bash` | Execute shell commands | 🔴 `--allow-shell` |
+
+---
+
+## 🔄 Session Persistence
+
+Each `agent` run automatically saves a resumable session:
 
 ```text
-session_id=...
-session_path=...
+session_id=4f2c8c6f9c0e4d7c9c7b1b2a3d4e5f67
+session_path=.port_sessions/agent/4f2c8c6f...
 ```
 
 Resume a previous session:
 
 ```bash
 python3 -m src.main agent-resume \
-  <session-id> \
-  "Continue the previous task and finish the missing implementation."
-```
-
-## Resume A Previous Session
-
-Each real `agent` run saves a resumable session automatically.
-
-After a run finishes, the CLI prints:
-
-```text
-session_id=...
-session_path=...
-```
-
-You can continue the same task later by passing the saved session id:
-
-```bash
-python3 -m src.main agent-resume \
-  <session-id> \
+  4f2c8c6f9c0e4d7c9c7b1b2a3d4e5f67 \
   "Continue the previous task and finish the missing parts."
 ```
 
-Example:
-
-```bash
-python3 -m src.main agent-resume \
-  4f2c8c6f9c0e4d7c9c7b1b2a3d4e5f67 \
-  "Continue building the customer e-commerce project and complete the checkout flow."
-```
-
-Session files are stored under:
-
-```text
-.port_sessions/agent/
-```
-
-You can inspect saved sessions with:
+Inspect saved sessions:
 
 ```bash
 ls -lt .port_sessions/agent
 ```
 
-Important notes:
+> **Note:** Run `agent-resume` from the same `claw-code/` directory where the session was created. A resumed session continues from the saved transcript, not from scratch.
 
-- Run `agent-resume` from the same `claw-code/` repository where the session was created.
-- If you use `--show-transcript`, the session id is printed after the run output.
-- A resumed session continues from the saved transcript, not from scratch.
+---
 
-## Slash Command Examples
+## 🧪 Testing
 
-These are handled locally before the model loop:
-
-```bash
-python3 -m src.main agent "/help"
-python3 -m src.main agent "/context" --cwd .
-python3 -m src.main agent "/context-raw" --cwd .
-python3 -m src.main agent "/tools" --cwd .
-python3 -m src.main agent "/memory" --cwd .
-python3 -m src.main agent "/status" --cwd .
-```
-
-## How To Test
-
-Run the full Python test suite:
+Run the full test suite:
 
 ```bash
 python3 -m unittest discover -s tests -v
 ```
 
-Optional smoke tests:
+Smoke tests:
 
 ```bash
 python3 -m src.main agent "/help"
@@ -229,41 +298,29 @@ python3 -m src.main agent \
   --cwd .
 ```
 
-## Useful Commands
+---
 
-Workspace summary:
+## 🔐 Permission Model
 
-```bash
-python3 -m src.main summary
-```
+Claw Code Agent uses a **tiered permission system** to keep the agent safe by default:
 
-Workspace manifest:
+| Tier | Capability | Flag Required |
+|------|-----------|---------------|
+| **Read-only** | List, read, glob, grep | None (default) |
+| **Write** | + file creation and editing | `--allow-write` |
+| **Shell** | + shell command execution | `--allow-shell` |
+| **Unsafe** | + destructive shell operations | `--unsafe` |
 
-```bash
-python3 -m src.main manifest
-```
+---
 
-Mirrored command inventory:
+## ⚠️ Disclaimer
 
-```bash
-python3 -m src.main commands --limit 10
-```
+- This repository is a **Python reimplementation** inspired by the Claude Code npm architecture.
+- It does **not** ship the original npm source.
+- It is **not** affiliated with or endorsed by Anthropic.
 
-Mirrored tool inventory:
+---
 
-```bash
-python3 -m src.main tools --limit 10
-```
-
-## Notes
-
-- The Python agent is still CLI-based, but sessions are now persisted and can be resumed with `agent-resume`.
-- `--allow-write` is required before the agent can modify files.
-- `--allow-shell` is required before the agent can execute shell commands.
-- `--unsafe` additionally allows destructive shell operations.
-
-## Disclaimer
-
-- This repository is a Python implementation effort inspired by the Claude Code npm architecture.
-- It does not ship the original npm source.
-- It is not affiliated with or endorsed by Anthropic.
+<p align="center">
+  <sub>Built with 🐍 Python · Powered by 🐉  HarnessLab Team.</sub>
+</p>
