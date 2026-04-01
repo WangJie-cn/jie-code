@@ -61,13 +61,15 @@ Built on the public porting workspace from [instructkr/claw-code](https://github
 
 ### In Progress
 
-- [ ] Full plugin and MCP server parity
-- [ ] Complete slash-command parity with npm runtime
-- [ ] Full interactive REPL / session persistence parity
-- [ ] Tokenizer-accurate context accounting
-- [ ] Remote runtime modes (SSH, teleport, deep-link)
-- [ ] Voice and VIM modes
-- [ ] Hooks system
+- [ ] Full MCP support
+- [ ] Full plugin system
+- [ ] Full slash-command parity
+- [ ] Full interactive REPL / TUI behavior
+- [ ] Exact tokenizer / context accounting
+- [ ] Hooks parity
+- [ ] Remote modes parity
+- [ ] Voice / VIM parity
+- [ ] Some deeper runtime details from the npm source
 - [ ] Cost tracking and budget limits
 
 ---
@@ -118,7 +120,7 @@ claw-code/
 | Requirement | Details |
 |-------------|---------|
 | 🐍 Python | `3.10` or higher |
-| 🖥️ Model Server | `vLLM` or `Ollama`, with tool calling support |
+| 🖥️ Model Server | `vLLM`, `Ollama`, or `LiteLLM Proxy`, with tool calling support |
 | 🧠 Model | [`Qwen/Qwen3-Coder-30B-A3B-Instruct`](https://huggingface.co/Qwen/Qwen3-Coder-30B-A3B-Instruct) (recommended) |
 
 ---
@@ -172,6 +174,33 @@ Notes:
 - Ollama does not use the `vLLM` parser flags shown above
 
 > 📚 **References:** [Ollama OpenAI Compatibility](https://docs.ollama.com/api/openai-compatibility) · [Ollama Tool Calling](https://docs.ollama.com/capabilities/tool-calling)
+
+### Optional: Use LiteLLM Proxy
+
+`claw-code-agent` can also work through LiteLLM Proxy because the runtime targets an OpenAI-compatible chat completions API. The routed model still needs to support tool calling for full agent behavior.
+
+Quick start example:
+
+```bash
+pip install 'litellm[proxy]'
+litellm --model ollama/qwen3
+```
+
+LiteLLM Proxy runs on port `4000` by default. Then configure:
+
+```bash
+export OPENAI_BASE_URL=http://127.0.0.1:4000
+export OPENAI_API_KEY=anything
+export OPENAI_MODEL=ollama/qwen3
+```
+
+Notes:
+
+- LiteLLM Proxy gives you an OpenAI-style gateway in front of many providers
+- tool use still depends on the underlying routed model and provider behavior
+- if you configure a LiteLLM master key, use that instead of `anything`
+
+> 📚 **References:** [LiteLLM Docs](https://docs.litellm.ai/) · [LiteLLM Proxy Quick Start](https://docs.litellm.ai/)
 
 ### 2. Configure Environment
 
