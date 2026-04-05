@@ -41,7 +41,14 @@
 | 🆕 | **OpenRouter Support** | Cloud API gateway — access OpenAI, Anthropic, Google models via one endpoint |
 | 🆕 | **Query Engine** | Runtime event counters, transcript summaries, orchestration reports |
 | 🆕 | **Remote Runtime** | Manifest-backed local remote profiles, connect/disconnect state, and remote CLI/slash flows |
+| 🆕 | **Hook & Policy Runtime** | Local `.claw-policy.json` / hook manifests with trust reporting, safe env, tool blocking, and budget overrides |
+| 🆕 | **Task & Plan Runtime** | Persistent local tasks and plans with plan-to-task sync and dependency-aware task execution |
+| 🆕 | **MCP Transport** | Real stdio MCP transport for `initialize`, resource listing/reading, and tool listing/calling |
+| 🆕 | **Search Runtime** | Provider-backed `web_search` with local manifests, activation state, and `/search` flows |
+| 🆕 | **Config & Account Runtime** | Local config/settings mutation plus manifest-backed account profiles and login/logout state |
+| 🆕 | **Tokenizer-Aware Context** | Cached tokenizer backends with heuristic fallback for `/context`, `/status`, and compaction |
 | 🆕 | **Daemon Commands** | Local `daemon start/ps/logs/attach/kill` wrapper over background agent sessions |
+| 🆕 | **Background Sessions** | Local `agent-bg`, `agent-ps`, `agent-logs`, `agent-attach`, and `agent-kill` flows |
 | 🆕 | **Testing Guide** | Comprehensive [TESTING_GUIDE.md](TESTING_GUIDE.md) with commands for every feature |
 | 🆕 | **Parity Checklist** | Full [PARITY_CHECKLIST.md](PARITY_CHECKLIST.md) tracking implementation status vs npm source |
 
@@ -73,10 +80,17 @@ Built on the public porting workspace from [instructkr/claw-code](https://github
 | 🔌 **Plugin Runtime** | Manifest-based plugins with hooks, aliases, virtual tools, and tool blocking |
 | 🪆 **Nested Delegation** | Delegate subtasks to child agents with dependency-aware topological batching |
 | 📡 **Streaming** | Token-by-token streaming output with `--stream` |
-| 💬 **Slash Commands** | Local commands: `/help`, `/context`, `/tools`, `/memory`, `/status`, `/model`, and more |
+| 💬 **Slash Commands** | Local commands for context, config, account, search, MCP, remote, tasks, plan, hooks, and model control |
 | 🌐 **Remote Runtime** | Manifest-backed remote profiles with local `remote-mode`, `ssh-mode`, `teleport-mode`, and connect/disconnect state |
+| 🧭 **Task & Plan Runtime** | Persistent tasks and plans with sync, next-task selection, and blocked/unblocked state |
+| 🛰️ **MCP Runtime** | Local MCP manifests plus real stdio MCP transport for resources and tools |
+| 🔎 **Search Runtime** | Provider-backed `web_search` plus provider activation and status reporting |
+| ⚙️ **Config & Account Runtime** | Local config mutation, settings inspection, account profiles, and login/logout state |
+| 🪝 **Hook & Policy Runtime** | Trust reporting, safe env, managed settings, tool blocking, and budget overrides |
 | 🧠 **Context Engine** | Automatic context building with CLAUDE.md discovery, compaction, and snipping |
+| 🔢 **Tokenizer-Aware Accounting** | Model-aware token counting with cached tokenizer backends and fallback heuristics |
 | 🔄 **Session Persistence** | Save and resume agent sessions with file-history replay |
+| 🗂️ **Background Sessions** | `agent-bg` and local daemon wrappers for background runs, logs, attach, and kill |
 | 💰 **Cost & Budget Control** | Token budgets, cost limits, tool-call caps, model-call caps |
 | 📋 **Structured Output** | JSON schema response mode for programmatic use |
 | 🔐 **Permission System** | Granular control: `--allow-write`, `--allow-shell`, `--unsafe` |
@@ -118,21 +132,30 @@ Built on the public porting workspace from [instructkr/claw-code](https://github
 - [x] Nested agent delegation with dependency-aware topological batching
 - [x] Agent manager with lineage tracking and group membership
 - [x] Local daemon-style background command family
+- [x] Local background session workflows: `agent-bg`, `agent-ps`, `agent-logs`, `agent-attach`, `agent-kill`
 - [x] Local remote runtime: manifest discovery, profile listing, connect/disconnect persistence, and CLI/slash flows
+- [x] Local hook and policy runtime with trust reporting, safe env, tool blocking, and budget overrides
+- [x] Local config runtime: config discovery, effective settings, source inspection, and config mutation
+- [x] Local account runtime: profile discovery, login/logout state, and account CLI/slash flows
+- [x] Local search runtime with provider discovery, activation, and provider-backed `web_search`
+- [x] Local MCP runtime: manifest resources, stdio transport, MCP resources, and MCP tool calls
+- [x] Local task and plan runtimes with plan sync and dependency-aware task execution
+- [x] Tokenizer-aware context accounting with cached tokenizer backends and heuristic fallback
 - [x] Plugin runtime: manifest discovery, hooks, aliases, virtual tools, tool blocking
 - [x] Plugin lifecycle hooks: resume, persist, delegate phases
 - [x] Plugin session-state persistence and resume restoration
 - [x] Query engine facade driving the real Python runtime
 - [x] Compaction metadata with lineage IDs and revision summaries
+- [x] Extended runtime tools: `web_fetch`, `web_search`, `tool_search`, `sleep`
 - [x] Unit tests for the Python runtime
 - [x] `pyproject.toml` packaging with `setuptools`
 
 ### 🔲 In Progress
 
-- [ ] Full MCP server support
+- [ ] Full MCP parity beyond the current stdio transport and local manifest/resource/tool support
 - [ ] Full slash-command parity with npm runtime
 - [ ] Full interactive REPL / TUI behavior
-- [ ] Exact tokenizer-accurate context accounting
+- [ ] Full tokenizer/chat-message framing parity beyond the current tokenizer-aware accounting
 - [ ] Hooks system parity
 - [ ] Real remote transport/runtime parity beyond the current local remote-profile runtime
 - [ ] Voice and VIM modes
@@ -169,9 +192,17 @@ claw-code/
 │   ├── session_store.py          # Session serialization & persistence
 │   ├── transcript.py             # Transcript block export & mutation tracking
 │   ├── query_engine.py           # Query engine facade & runtime orchestration
+│   ├── mcp_runtime.py            # Local MCP discovery and stdio MCP transport
+│   ├── search_runtime.py         # Search providers and provider-backed web_search
 │   ├── remote_runtime.py         # Local remote profiles, connect/disconnect state, remote CLI support
+│   ├── background_runtime.py     # Local background sessions and daemon support
 │   ├── account_runtime.py        # Local account profiles, login/logout state, account CLI support
 │   ├── config_runtime.py         # Local workspace config/settings discovery and mutation
+│   ├── plan_runtime.py           # Persistent plan runtime and plan sync
+│   ├── task_runtime.py           # Persistent task runtime and task execution
+│   ├── task.py                   # Task state model and task dataclasses
+│   ├── hook_policy.py            # Hook/policy manifests, trust, and safe env handling
+│   ├── tokenizer_runtime.py      # Tokenizer-aware context accounting backends
 │   ├── permissions.py            # Tool permission filtering
 │   ├── cost_tracker.py           # Cost & budget enforcement
 │   ├── tools.py                  # Mirrored tool inventory
@@ -376,10 +407,27 @@ python3 -m src.main agent \
 |---------|-------------|
 | `agent <prompt>` | Run the agent with a prompt |
 | `agent-chat [prompt]` | Start interactive multi-turn chat mode |
+| `agent-bg <prompt>` | Run the agent in a local background session |
+| `agent-ps` | List local background sessions |
+| `agent-logs <id>` | Show background session logs |
+| `agent-attach <id>` | Show the current background output snapshot |
+| `agent-kill <id>` | Stop a background session |
+| `daemon <subcommand>` | Daemon-style wrapper over local background sessions |
 | `agent-prompt` | Show the assembled system prompt |
 | `agent-context` | Show estimated context usage |
 | `agent-context-raw` | Show the raw context snapshot |
 | `agent-resume <id> <prompt>` | Resume a saved session |
+
+### Runtime Utility Commands
+
+| Command | Description |
+|---------|-------------|
+| `search-status` / `search-providers` / `search-activate` / `search` | Inspect and use the local search runtime |
+| `mcp-status` / `mcp-resources` / `mcp-resource` / `mcp-tools` / `mcp-call-tool` | Inspect and use the local MCP runtime |
+| `remote-status` / `remote-profiles` / `remote-disconnect` | Inspect local remote runtime state |
+| `remote-mode` / `ssh-mode` / `teleport-mode` / `direct-connect-mode` / `deep-link-mode` | Activate local remote runtime modes |
+| `config-status` / `config-effective` / `config-source` / `config-get` / `config-set` | Inspect and mutate local config/settings |
+| `account-status` / `account-profiles` / `account-login` / `account-logout` | Inspect and mutate local account state |
 
 ### CLI Flags
 
@@ -393,8 +441,10 @@ python3 -m src.main agent \
 | `--unsafe` | Allow destructive shell operations |
 | `--stream` | Enable token-by-token streaming output |
 | `--show-transcript` | Print the full message transcript |
+| `--scratchpad-root <path>` | Override the scratchpad directory |
 | `--system-prompt <text>` | Set a custom system prompt |
 | `--append-system-prompt <text>` | Append to the system prompt |
+| `--override-system-prompt <text>` | Replace the generated system prompt |
 | `--add-dir <path>` | Add extra directories to context |
 
 ### Budget & Limit Flags
@@ -439,7 +489,28 @@ These are handled **locally** before the model loop:
 | `/help` | `/commands` | Show built-in slash commands |
 | `/context` | `/usage` | Show estimated session context usage |
 | `/context-raw` | `/env` | Show raw environment & context snapshot |
+| `/mcp` | — | Show MCP runtime status, tools, or a single MCP tool |
+| `/resources` | — | List MCP resources |
+| `/resource` | — | Read an MCP resource by URI |
+| `/search` | — | Show search status, providers, activate a provider, or run a search |
+| `/remote` | — | Show local remote status or activate a target |
+| `/remotes` | — | List local remote profiles |
+| `/ssh` | — | Activate an SSH-style remote profile |
+| `/teleport` | — | Activate a teleport-style remote profile |
+| `/direct-connect` | — | Activate a direct-connect remote profile |
+| `/deep-link` | — | Activate a deep-link remote profile |
+| `/disconnect` | `/remote-disconnect` | Disconnect the active remote runtime target |
+| `/account` | — | Show account runtime status or profiles |
+| `/login` | — | Activate a local account profile or identity |
+| `/logout` | — | Clear the active account session |
+| `/config` | `/settings` | Inspect effective config, sources, or a single config value |
+| `/plan` | `/planner` | Show the local plan runtime state |
+| `/tasks` | `/todo` | Show the local task list |
+| `/task` | — | Show a task by id |
+| `/task-next` | `/next-task` | Show the next actionable tasks |
 | `/prompt` | `/system-prompt` | Render the effective system prompt |
+| `/hooks` | `/policy` | Show local hook/policy manifests |
+| `/trust` | — | Show trust mode, managed settings, and safe env values |
 | `/permissions` | — | Show active tool permission mode |
 | `/model` | — | Show or update the active model |
 | `/tools` | — | List registered tools with permission status |
@@ -467,7 +538,7 @@ python3 -m src.main tools --limit 10    # Tool inventory
 
 ## 🔧 Built-in Tools
 
-The agent has access to 7 core tools:
+The runtime currently includes core and extended tools:
 
 | Tool | Description | Permission |
 |------|-------------|------------|
@@ -478,6 +549,17 @@ The agent has access to 7 core tools:
 | `glob_search` | Find files by glob pattern | 🟢 Always |
 | `grep_search` | Search file contents by regex | 🟢 Always |
 | `bash` | Execute shell commands | 🔴 `--allow-shell` |
+| `web_fetch` | Fetch local or remote text content by URL | 🟢 Always |
+| `search_status` / `search_list_providers` / `search_activate_provider` / `web_search` | Search runtime status and provider-backed web search | 🟢 Always |
+| `tool_search` | Search the current Python tool registry | 🟢 Always |
+| `sleep` | Bounded local wait tool | 🟢 Always |
+| `config_list` / `config_get` / `config_set` | Inspect and mutate local workspace config | `config_set` is 🟡 `--allow-write` |
+| `account_status` / `account_list_profiles` / `account_login` / `account_logout` | Inspect and mutate local account state | 🟢 Always |
+| `remote_status` / `remote_list_profiles` / `remote_connect` / `remote_disconnect` | Inspect and mutate local remote runtime state | 🟢 Always |
+| `mcp_list_resources` / `mcp_read_resource` / `mcp_list_tools` / `mcp_call_tool` | Use local MCP resources and transport-backed MCP tools | 🟢 Always |
+| `plan_get` / `update_plan` / `plan_clear` | Inspect and mutate the local plan runtime | `update_plan` is 🟡 `--allow-write` |
+| `task_next` / `task_list` / `task_get` / `task_create` / `task_update` / `task_start` / `task_complete` / `task_block` / `task_cancel` / `todo_write` | Persistent local task and todo management | write-like task mutations are 🟡 `--allow-write` |
+| `delegate_agent` | Delegate work to nested child agents | 🟢 Always |
 
 ---
 
@@ -505,7 +587,7 @@ Claw Code Agent supports a **manifest-based plugin runtime**. Drop a `plugin.jso
 }
 ```
 
-> See [TESTING_GUIDE.md](TESTING_GUIDE.md) **Section 13** for full plugin testing commands.
+> See [TESTING_GUIDE.md](TESTING_GUIDE.md) **Section 19** for full plugin testing commands.
 
 ---
 
@@ -525,7 +607,7 @@ Features:
 - Child-session save and resume
 - Agent manager lineage tracking
 
-> See [TESTING_GUIDE.md](TESTING_GUIDE.md) **Section 12** for delegation testing commands.
+> See [TESTING_GUIDE.md](TESTING_GUIDE.md) **Section 20** for delegation testing commands.
 
 ---
 
@@ -582,7 +664,7 @@ python3 -m src.main agent \
   --cwd .
 ```
 
-> 📚 **Full testing guide:** See [TESTING_GUIDE.md](TESTING_GUIDE.md) for step-by-step commands covering all 16 feature areas.
+> 📚 **Full testing guide:** See [TESTING_GUIDE.md](TESTING_GUIDE.md) for step-by-step commands covering the full implemented runtime surface.
 
 ---
 
