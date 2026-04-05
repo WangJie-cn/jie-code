@@ -1052,8 +1052,17 @@ def _glob_search(arguments: dict[str, Any], context: ToolExecutionContext) -> st
     matches = sorted(context.root.glob(pattern))
     if not matches:
         return '(no matches)'
-    rendered = [str(path.relative_to(context.root)) for path in matches]
-    return _truncate_output('\n'.join(rendered), context.max_output_chars)
+    root_resolved = context.root.resolve()
+    validated: list[str] = []
+    for path in matches:
+        try:
+            path.resolve().relative_to(root_resolved)
+        except ValueError:
+            continue
+        validated.append(str(path.relative_to(context.root)))
+    if not validated:
+        return '(no matches)'
+    return _truncate_output('\n'.join(validated), context.max_output_chars)
 
 
 def _grep_search(arguments: dict[str, Any], context: ToolExecutionContext) -> str:
@@ -1068,7 +1077,10 @@ def _grep_search(arguments: dict[str, Any], context: ToolExecutionContext) -> st
     root = _resolve_path(raw_path, context)
     if not root.exists():
         raise ToolExecutionError(f'Path not found: {raw_path}')
-    regex = re.compile(re.escape(pattern) if literal else pattern)
+    try:
+        regex = re.compile(re.escape(pattern) if literal else pattern)
+    except re.error as exc:
+        raise ToolExecutionError(f'Invalid regex pattern: {exc}') from exc
     hits: list[str] = []
     file_iter = root.rglob('*') if root.is_dir() else [root]
     for file_path in file_iter:
@@ -1126,8 +1138,8 @@ def _web_fetch(arguments: dict[str, Any], context: ToolExecutionContext) -> str:
     raw_url = _require_string(arguments, 'url')
     max_chars = _coerce_int(arguments, 'max_chars', context.max_output_chars)
     parsed = urllib.parse.urlparse(raw_url)
-    if parsed.scheme not in {'http', 'https', 'file'}:
-        raise ToolExecutionError('url must use http, https, or file scheme')
+    if parsed.scheme not in {'http', 'https'}:
+        raise ToolExecutionError('url must use http or https scheme')
     request = urllib.request.Request(
         raw_url,
         headers={'User-Agent': 'claw-code-agent/1.0'},
@@ -1697,7 +1709,8 @@ def _task_create(arguments: dict[str, Any], context: ToolExecutionContext) -> st
         metadata=metadata,
     )
     task = mutation.task
-    assert task is not None
+    if task is None:
+        raise ToolExecutionError('Task creation succeeded but returned no task object')
     return (
         f'created task {task.task_id}: {task.title} [{task.status}]',
         _task_mutation_metadata(
@@ -1755,7 +1768,8 @@ def _task_update(arguments: dict[str, Any], context: ToolExecutionContext) -> st
     except KeyError as exc:
         raise ToolExecutionError(f'Unknown task id: {task_id}') from exc
     task = mutation.task
-    assert task is not None
+    if task is None:
+        raise ToolExecutionError('Task update succeeded but returned no task object')
     return (
         f'updated task {task.task_id}: {task.title} [{task.status}]',
         _task_mutation_metadata(
@@ -1783,7 +1797,8 @@ def _task_start(arguments: dict[str, Any], context: ToolExecutionContext) -> str
     except KeyError as exc:
         raise ToolExecutionError(f'Unknown task id: {task_id}') from exc
     task = mutation.task
-    assert task is not None
+    if task is None:
+        raise ToolExecutionError('Task start succeeded but returned no task object')
     return (
         f'started task {task.task_id}: {task.title} [{task.status}]',
         _task_mutation_metadata(
@@ -1805,7 +1820,8 @@ def _task_complete(arguments: dict[str, Any], context: ToolExecutionContext) -> 
     except KeyError as exc:
         raise ToolExecutionError(f'Unknown task id: {task_id}') from exc
     task = runtime.get_task(task_id)
-    assert task is not None
+    if task is None:
+        raise ToolExecutionError(f'Task completion succeeded but task {task_id} not found')
     return (
         f'completed task {task.task_id}: {task.title} [{task.status}]',
         _task_mutation_metadata(
@@ -1833,7 +1849,8 @@ def _task_block(arguments: dict[str, Any], context: ToolExecutionContext) -> str
     except KeyError as exc:
         raise ToolExecutionError(f'Unknown task id: {task_id}') from exc
     task = mutation.task
-    assert task is not None
+    if task is None:
+        raise ToolExecutionError('Task block succeeded but returned no task object')
     return (
         f'blocked task {task.task_id}: {task.title} [{task.status}]',
         _task_mutation_metadata(
@@ -1858,7 +1875,8 @@ def _task_cancel(arguments: dict[str, Any], context: ToolExecutionContext) -> st
     except KeyError as exc:
         raise ToolExecutionError(f'Unknown task id: {task_id}') from exc
     task = mutation.task
-    assert task is not None
+    if task is None:
+        raise ToolExecutionError('Task cancellation succeeded but returned no task object')
     return (
         f'cancelled task {task.task_id}: {task.title} [{task.status}]',
         _task_mutation_metadata(
@@ -1945,11 +1963,11 @@ def _stream_bash(
                 if line == '':
                     try:
                         selector.unregister(key.fileobj)
-                    except Exception:
+                    except (KeyError, ValueError, OSError):
                         pass
                     try:
                         key.fileobj.close()
-                    except Exception:
+                    except OSError:
                         pass
                     continue
                 if stream_name == 'stdout':
@@ -1964,7 +1982,7 @@ def _stream_bash(
     finally:
         try:
             selector.close()
-        except Exception:
+        except OSError:
             pass
 
     exit_code = process.wait()
@@ -2180,16 +2198,16 @@ def _drain_registered_streams(
     for key in list(selector.get_map().values()):
         try:
             remainder = key.fileobj.read()
-        except Exception:
+        except OSError:
             remainder = ''
         if not remainder:
             try:
                 selector.unregister(key.fileobj)
-            except Exception:
+            except (KeyError, ValueError, OSError):
                 pass
             try:
                 key.fileobj.close()
-            except Exception:
+            except OSError:
                 pass
             continue
         if key.data == 'stdout':
@@ -2198,16 +2216,29 @@ def _drain_registered_streams(
             stderr_chunks.append(remainder)
         try:
             selector.unregister(key.fileobj)
-        except Exception:
+        except (KeyError, ValueError, OSError):
             pass
         try:
             key.fileobj.close()
-        except Exception:
+        except OSError:
             pass
 
 
+_SENSITIVE_ENV_PREFIXES = (
+    'AWS_SECRET', 'AWS_SESSION_TOKEN',
+    'GITHUB_TOKEN', 'GH_TOKEN',
+    'OPENAI_API_KEY', 'ANTHROPIC_API_KEY',
+    'DATABASE_PASSWORD', 'DB_PASSWORD',
+    'SECRET_KEY', 'PRIVATE_KEY',
+)
+
+
 def _build_subprocess_env(context: ToolExecutionContext) -> dict[str, str]:
-    env = os.environ.copy()
+    env = {
+        key: value
+        for key, value in os.environ.items()
+        if not any(key.upper().startswith(prefix) for prefix in _SENSITIVE_ENV_PREFIXES)
+    }
     env.update(context.extra_env)
     return env
 

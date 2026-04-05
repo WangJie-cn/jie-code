@@ -9,7 +9,8 @@ from src.agent_types import AgentRuntimeConfig
 
 
 class ExtendedToolTests(unittest.TestCase):
-    def test_web_fetch_reads_text_from_file_url(self) -> None:
+    def test_web_fetch_rejects_file_url(self) -> None:
+        """Verify that file:// URLs are blocked to prevent SSRF attacks."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             workspace = Path(tmp_dir)
             target = workspace / 'page.txt'
@@ -25,9 +26,8 @@ class ExtendedToolTests(unittest.TestCase):
                 context,
             )
 
-        self.assertTrue(result.ok)
-        self.assertIn('hello from web fetch', result.content)
-        self.assertEqual(result.metadata.get('action'), 'web_fetch')
+        self.assertFalse(result.ok)
+        self.assertIn('http or https', result.content)
 
     def test_tool_search_lists_matching_tools(self) -> None:
         registry = default_tool_registry()
