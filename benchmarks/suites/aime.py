@@ -110,6 +110,22 @@ class AIMEBenchmark(BenchmarkSuite):
             f"no explanation, no work, just the number."
         )
 
+    def recover_output_files(
+        self,
+        problem: dict[str, Any],
+        workspace: str,
+        agent_output: str,
+        metadata: dict[str, Any],
+    ) -> None:
+        del problem
+        answer_path = Path(workspace) / "answer.txt"
+        if answer_path.exists():
+            return
+        numbers = re.findall(r"-?\d+", agent_output.replace(",", ""))
+        if numbers:
+            answer_path.write_text(numbers[-1] + "\n", encoding="utf-8")
+            metadata["recovered_answer_from_output"] = True
+
     def evaluate(self, problem: dict[str, Any], workspace: str) -> BenchmarkResult:
         pid = problem.get("id", "unknown")
         expected = str(problem["answer"]).strip()

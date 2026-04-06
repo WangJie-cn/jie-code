@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import textwrap
 from pathlib import Path
@@ -213,17 +214,34 @@ class MBPPBenchmark(BenchmarkSuite):
     def setup_workspace(self, problem: dict[str, Any], workspace: str) -> None:
         tests = problem.get("test_list", [])
         test_code = "\n".join(tests)
-        harness = textwrap.dedent(f"""\
-            import sys
-            sys.path.insert(0, ".")
-            from solution import *
-
-            {test_code}
-
-            print("ALL_TESTS_PASSED")
-        """)
+        harness = (
+            "import sys\n"
+            'sys.path.insert(0, ".")\n'
+            "from solution import *\n\n"
+            f"{test_code}\n\n"
+            'print("ALL_TESTS_PASSED")\n'
+        )
         with open(os.path.join(workspace, "test_harness.py"), "w") as fh:
             fh.write(harness)
+
+    def recover_output_files(
+        self,
+        problem: dict[str, Any],
+        workspace: str,
+        agent_output: str,
+        metadata: dict[str, Any],
+    ) -> None:
+        del problem
+        solution_path = Path(workspace) / "solution.py"
+        if solution_path.exists():
+            return
+        blocks = re.findall(r"```(?:python)?\s*(.*?)```", agent_output, flags=re.DOTALL | re.IGNORECASE)
+        for block in blocks:
+            candidate = block.strip()
+            if "def " in candidate or "import " in candidate or "class " in candidate:
+                solution_path.write_text(candidate.rstrip() + "\n", encoding="utf-8")
+                metadata["recovered_solution_from_output"] = True
+                return
 
     def evaluate(self, problem: dict[str, Any], workspace: str) -> BenchmarkResult:
         pid = str(problem.get("task_id", "unknown"))

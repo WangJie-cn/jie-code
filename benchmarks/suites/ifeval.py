@@ -215,6 +215,22 @@ class IFEvalBenchmark(BenchmarkSuite):
     def build_prompt(self, problem: dict[str, Any]) -> str:
         return problem["instruction"]
 
+    def recover_output_files(
+        self,
+        problem: dict[str, Any],
+        workspace: str,
+        agent_output: str,
+        metadata: dict[str, Any],
+    ) -> None:
+        del problem
+        output_path = Path(workspace) / "output.txt"
+        if output_path.exists():
+            return
+        text = agent_output.strip()
+        if text:
+            output_path.write_text(text + "\n", encoding="utf-8")
+            metadata["recovered_output_from_agent_text"] = True
+
     def evaluate(self, problem: dict[str, Any], workspace: str) -> BenchmarkResult:
         pid = problem.get("id", "unknown")
         checks = problem.get("checks", [])

@@ -51,5 +51,4 @@ include = ["src*"]
 [tool.setuptools.package-data]
 src = [
   "reference_data/*.json",
-  "reference_data/subsystems/*.json",
 ]
