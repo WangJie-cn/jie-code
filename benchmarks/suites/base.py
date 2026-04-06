@@ -1,17 +1,12 @@
 """
-Base class for all benchmark suites.
-
-Every suite implements:
-  - load_dataset()   -> download/load the evaluation dataset
-  - run_single()     -> run the agent on one problem
-  - evaluate()       -> score agent output for one problem
-  - run_all()        -> orchestrate the full benchmark
+Base class for benchmark suites and shared benchmark helpers.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -23,10 +18,33 @@ from pathlib import Path
 from typing import Any
 
 
+_SAFE_COMPONENT_RE = re.compile(r"[^A-Za-z0-9_.-]+")
+
+
+def _safe_component(value: str) -> str:
+    cleaned = _SAFE_COMPONENT_RE.sub("_", value).strip("._")
+    return cleaned or "item"
+
+
+def resolve_temp_root() -> Path:
+    root = Path(tempfile.gettempdir()).expanduser().resolve()
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def make_temp_workspace(prefix: str, suite_name: str, problem_id: str) -> str:
+    temp_root = resolve_temp_root()
+    safe_prefix = _safe_component(prefix)
+    safe_suite = _safe_component(suite_name)
+    safe_problem = _safe_component(problem_id)
+    return tempfile.mkdtemp(
+        prefix=f"{safe_prefix}_{safe_suite}_{safe_problem}_",
+        dir=str(temp_root),
+    )
+
+
 @dataclass
 class BenchmarkResult:
-    """Result for a single problem in a benchmark suite."""
-
     problem_id: str
     passed: bool
     expected: str = ""
@@ -38,8 +56,6 @@ class BenchmarkResult:
 
 @dataclass
 class SuiteReport:
-    """Aggregated report for a full benchmark suite run."""
-
     suite_name: str
     total: int
     passed: int
@@ -65,12 +81,9 @@ class SuiteReport:
 
 
 class BenchmarkSuite(ABC):
-    """Abstract base for a benchmark suite."""
-
-    # Subclasses set these
     name: str = "base"
     description: str = ""
-    category: str = "general"  # coding | math | instruction-following
+    category: str = "general"
 
     def __init__(
         self,
@@ -79,6 +92,8 @@ class BenchmarkSuite(ABC):
         limit: int | None = None,
         agent_timeout: float = 300.0,
         verbose: bool = False,
+        artifacts_dir: str | None = None,
+        save_passing_artifacts: bool = False,
     ) -> None:
         self.data_dir = data_dir or str(
             Path(__file__).resolve().parent.parent / "data"
@@ -86,37 +101,28 @@ class BenchmarkSuite(ABC):
         self.limit = limit
         self.agent_timeout = agent_timeout
         self.verbose = verbose
+        self.artifacts_dir = artifacts_dir
+        self.save_passing_artifacts = save_passing_artifacts
         self.project_root = str(Path(__file__).resolve().parent.parent.parent)
-
-    # ------------------------------------------------------------------
-    # Abstract interface
-    # ------------------------------------------------------------------
 
     @abstractmethod
     def load_dataset(self) -> list[dict[str, Any]]:
-        """Return a list of problem dicts. Each must have at least an 'id' key."""
         ...
 
     @abstractmethod
     def build_prompt(self, problem: dict[str, Any]) -> str:
-        """Convert a problem dict into the instruction string sent to the agent."""
         ...
 
     @abstractmethod
-    def evaluate(
-        self, problem: dict[str, Any], workspace: str
-    ) -> BenchmarkResult:
-        """Score the agent's output for one problem.  Return a BenchmarkResult."""
+    def evaluate(self, problem: dict[str, Any], workspace: str) -> BenchmarkResult:
         ...
 
-    # ------------------------------------------------------------------
-    # Agent execution helpers
-    # ------------------------------------------------------------------
-
     def _run_shell(
-        self, cmd: str, cwd: str, timeout: float = 30.0
+        self,
+        cmd: str,
+        cwd: str,
+        timeout: float = 30.0,
     ) -> tuple[int, str]:
-        """Run a shell command, return (exit_code, combined_output)."""
         try:
             proc = subprocess.run(
                 cmd,
@@ -133,10 +139,6 @@ class BenchmarkSuite(ABC):
             return 1, str(exc)
 
     def run_agent(self, instruction: str, workspace: str) -> tuple[int, str, float]:
-        """Run the claw-code-agent on *instruction* inside *workspace*.
-
-        Returns (exit_code, output, duration_sec).
-        """
         import shlex
 
         agent_cmd = (
@@ -147,11 +149,13 @@ class BenchmarkSuite(ABC):
             f"--allow-shell"
         )
         if self.verbose:
-            print(f"  agent cmd: {agent_cmd[:120]}...")
+            print(f"  agent cmd: {agent_cmd[:160]}...")
 
         start = time.time()
         code, output = self._run_shell(
-            agent_cmd, cwd=self.project_root, timeout=self.agent_timeout
+            agent_cmd,
+            cwd=self.project_root,
+            timeout=self.agent_timeout,
         )
         duration = time.time() - start
 
@@ -160,12 +164,65 @@ class BenchmarkSuite(ABC):
 
         return code, output, duration
 
-    # ------------------------------------------------------------------
-    # Orchestration
-    # ------------------------------------------------------------------
+    def setup_workspace(self, problem: dict[str, Any], workspace: str) -> None:
+        del problem, workspace
+
+    def recover_output_files(
+        self,
+        problem: dict[str, Any],
+        workspace: str,
+        agent_output: str,
+        metadata: dict[str, Any],
+    ) -> None:
+        del problem, workspace, agent_output, metadata
+
+    def _artifact_root(self, index: int, problem_id: str) -> Path | None:
+        if not self.artifacts_dir:
+            return None
+        root = Path(self.artifacts_dir)
+        root.mkdir(parents=True, exist_ok=True)
+        return root / f"{index:03d}_{_safe_component(problem_id)}"
+
+    def _save_artifacts(
+        self,
+        *,
+        index: int,
+        problem: dict[str, Any],
+        prompt: str,
+        agent_output: str,
+        workspace: str,
+        result: BenchmarkResult,
+        agent_exit_code: int,
+    ) -> None:
+        artifact_root = self._artifact_root(index, result.problem_id)
+        if artifact_root is None:
+            return
+        if result.passed and not self.save_passing_artifacts:
+            return
+
+        artifact_root.mkdir(parents=True, exist_ok=True)
+        (artifact_root / "problem.json").write_text(
+            json.dumps(problem, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        (artifact_root / "prompt.txt").write_text(prompt, encoding="utf-8")
+        (artifact_root / "agent_output.txt").write_text(agent_output, encoding="utf-8")
+
+        workspace_dst = artifact_root / "workspace"
+        if workspace_dst.exists():
+            shutil.rmtree(workspace_dst, ignore_errors=True)
+        shutil.copytree(workspace, workspace_dst)
+
+        result_payload = asdict(result)
+        result_payload["agent_exit_code"] = agent_exit_code
+        result_payload["workspace"] = workspace
+        (artifact_root / "result.json").write_text(
+            json.dumps(result_payload, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        result.metadata["artifact_path"] = str(artifact_root)
 
     def run_all(self) -> SuiteReport:
-        """Run the full benchmark suite and return a SuiteReport."""
         problems = self.load_dataset()
         if self.limit is not None:
             problems = problems[: self.limit]
@@ -182,25 +239,37 @@ class BenchmarkSuite(ABC):
         print("=" * 72)
         print()
 
-        all_results: list[BenchmarkResult] = []
         suite_start = time.time()
+        all_results: list[BenchmarkResult] = []
 
-        for i, problem in enumerate(problems, 1):
-            pid = problem.get("id", problem.get("task_id", f"problem-{i}"))
-            print(f"[{i}/{len(problems)}] {pid}")
+        for index, problem in enumerate(problems, 1):
+            pid = str(problem.get("id", problem.get("task_id", f"problem-{index}")))
+            print(f"[{index}/{len(problems)}] {pid}")
 
-            workspace = tempfile.mkdtemp(prefix=f"claw_{self.name}_{pid}_")
+            workspace = make_temp_workspace("claw", self.name, pid)
+            prompt = ""
+            agent_output = ""
+            agent_exit_code = -1
             try:
-                # Prepare workspace
                 self.setup_workspace(problem, workspace)
-
-                # Build prompt and run agent
                 prompt = self.build_prompt(problem)
-                _code, _output, duration = self.run_agent(prompt, workspace)
+                agent_exit_code, agent_output, duration = self.run_agent(prompt, workspace)
 
-                # Evaluate
+                result_metadata: dict[str, Any] = {"agent_exit_code": agent_exit_code}
+                self.recover_output_files(problem, workspace, agent_output, result_metadata)
                 result = self.evaluate(problem, workspace)
                 result.duration_sec = duration
+                result.metadata.update(result_metadata)
+
+                self._save_artifacts(
+                    index=index,
+                    problem=problem,
+                    prompt=prompt,
+                    agent_output=agent_output,
+                    workspace=workspace,
+                    result=result,
+                    agent_exit_code=agent_exit_code,
+                )
 
                 status = "PASS ✅" if result.passed else "FAIL ❌"
                 print(f"  -> {status}  ({duration:.1f}s)")
@@ -209,6 +278,16 @@ class BenchmarkSuite(ABC):
                     problem_id=pid,
                     passed=False,
                     error=str(exc),
+                    metadata={"agent_exit_code": agent_exit_code},
+                )
+                self._save_artifacts(
+                    index=index,
+                    problem=problem,
+                    prompt=prompt,
+                    agent_output=agent_output,
+                    workspace=workspace,
+                    result=result,
+                    agent_exit_code=agent_exit_code,
                 )
                 print(f"  -> ERROR ❌  {exc}")
             finally:
@@ -218,9 +297,8 @@ class BenchmarkSuite(ABC):
             print()
 
         suite_duration = time.time() - suite_start
-        passed = sum(1 for r in all_results if r.passed)
+        passed = sum(1 for item in all_results if item.passed)
         total = len(all_results)
-
         report = SuiteReport(
             suite_name=self.name,
             total=total,
@@ -232,18 +310,8 @@ class BenchmarkSuite(ABC):
             results=all_results,
             timestamp=time.strftime("%Y-%m-%dT%H:%M:%S"),
         )
-
         self._print_report(report)
         return report
-
-    def setup_workspace(
-        self, problem: dict[str, Any], workspace: str
-    ) -> None:
-        """Optional: prepare files in workspace before the agent runs."""
-
-    # ------------------------------------------------------------------
-    # Reporting
-    # ------------------------------------------------------------------
 
     @staticmethod
     def _print_report(report: SuiteReport) -> None:
@@ -252,9 +320,9 @@ class BenchmarkSuite(ABC):
         print(f"  {report.suite_name} — RESULTS")
         print("=" * 72)
         print()
-        for r in report.results:
-            icon = "✅" if r.passed else "❌"
-            print(f"  {icon} {r.problem_id:<40} {r.duration_sec:.1f}s")
+        for result in report.results:
+            icon = "✅" if result.passed else "❌"
+            print(f"  {icon} {result.problem_id:<40} {result.duration_sec:.1f}s")
         print()
         print("─" * 72)
         print(
@@ -267,7 +335,6 @@ class BenchmarkSuite(ABC):
 
     @staticmethod
     def save_report(report: SuiteReport, path: str) -> None:
-        """Persist a SuiteReport to JSON."""
-        with open(path, "w") as fh:
+        with open(path, "w", encoding="utf-8") as fh:
             json.dump(report.to_dict(), fh, indent=2)
         print(f"  Report saved to {path}")

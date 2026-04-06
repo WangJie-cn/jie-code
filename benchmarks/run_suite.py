@@ -193,6 +193,10 @@ def main() -> None:
                         help="Save results to JSON file")
     parser.add_argument("--data-dir",
                         help="Directory containing dataset files (JSONL)")
+    parser.add_argument("--artifacts-dir",
+                        help="Directory where per-problem artifacts will be saved")
+    parser.add_argument("--save-passing-artifacts", action="store_true",
+                        help="Also save artifacts for passing problems")
     args = parser.parse_args()
 
     if args.list:
@@ -236,6 +240,8 @@ def main() -> None:
             limit=args.limit,
             agent_timeout=args.timeout,
             verbose=args.verbose,
+            artifacts_dir=args.artifacts_dir,
+            save_passing_artifacts=args.save_passing_artifacts,
         )
         report = suite.run_all()
         reports.append(report)

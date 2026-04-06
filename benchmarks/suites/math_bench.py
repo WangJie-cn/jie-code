@@ -182,6 +182,22 @@ class MATHBenchmark(BenchmarkSuite):
             f"Save just the answer to answer.txt — no explanation, no work, just the answer."
         )
 
+    def recover_output_files(
+        self,
+        problem: dict[str, Any],
+        workspace: str,
+        agent_output: str,
+        metadata: dict[str, Any],
+    ) -> None:
+        del problem
+        answer_path = Path(workspace) / "answer.txt"
+        if answer_path.exists():
+            return
+        answer = _normalize_answer(agent_output)
+        if answer:
+            answer_path.write_text(answer + "\n", encoding="utf-8")
+            metadata["recovered_answer_from_output"] = True
+
     def evaluate(self, problem: dict[str, Any], workspace: str) -> BenchmarkResult:
         pid = problem.get("id", str(problem.get("task_id", "unknown")))
         expected_raw = str(problem["answer"])

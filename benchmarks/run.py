@@ -39,6 +39,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from benchmarks.tasks.definitions import TASKS, BenchmarkTask, get_task
+from benchmarks.suites.base import make_temp_workspace
 
 
 # ---------------------------------------------------------------------------
@@ -90,7 +91,7 @@ def run_task(
     """Run a single benchmark task end-to-end."""
 
     # Create isolated temp workspace
-    workspace = tempfile.mkdtemp(prefix=f"claw_bench_{task.id}_")
+    workspace = make_temp_workspace("claw_bench", task.category, task.id)
 
     if verbose:
         print(f"  workspace: {workspace}")

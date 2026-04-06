@@ -141,6 +141,22 @@ class GSM8KBenchmark(BenchmarkSuite):
             f"Save just the number to answer.txt — no units, no explanation."
         )
 
+    def recover_output_files(
+        self,
+        problem: dict[str, Any],
+        workspace: str,
+        agent_output: str,
+        metadata: dict[str, Any],
+    ) -> None:
+        del problem
+        answer_path = Path(workspace) / "answer.txt"
+        if answer_path.exists():
+            return
+        number = _extract_number(agent_output)
+        if number is not None:
+            answer_path.write_text(number + "\n", encoding="utf-8")
+            metadata["recovered_answer_from_output"] = True
+
     def evaluate(self, problem: dict[str, Any], workspace: str) -> BenchmarkResult:
         pid = problem.get("id", "unknown")
         expected = str(problem["answer"])
