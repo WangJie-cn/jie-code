@@ -130,6 +130,11 @@ def get_slash_command_specs() -> tuple[SlashCommandSpec, ...]:
             handler=_handle_account,
         ),
         SlashCommandSpec(
+            names=('ask',),
+            description='Show local ask-user runtime status or ask-user history.',
+            handler=_handle_ask,
+        ),
+        SlashCommandSpec(
             names=('login',),
             description='Activate a local account profile or ephemeral identity.',
             handler=_handle_login,
@@ -188,6 +193,21 @@ def get_slash_command_specs() -> tuple[SlashCommandSpec, ...]:
             names=('tasks', 'todo'),
             description='Show the local runtime task list, optionally filtered by status.',
             handler=_handle_tasks,
+        ),
+        SlashCommandSpec(
+            names=('teams',),
+            description='List the locally configured collaboration teams.',
+            handler=_handle_teams,
+        ),
+        SlashCommandSpec(
+            names=('team',),
+            description='Show one local collaboration team by name.',
+            handler=_handle_team,
+        ),
+        SlashCommandSpec(
+            names=('messages',),
+            description='Show recorded collaboration messages for all teams or one team.',
+            handler=_handle_messages,
         ),
         SlashCommandSpec(
             names=('task-next', 'next-task'),
@@ -343,6 +363,15 @@ def _handle_account(agent: 'LocalCodingAgent', args: str, input_text: str) -> Sl
     return _local_result(input_text, 'Usage: /account [profiles|profile <name>]')
 
 
+def _handle_ask(agent: 'LocalCodingAgent', args: str, input_text: str) -> SlashCommandResult:
+    command = args.strip()
+    if not command:
+        return _local_result(input_text, agent.render_ask_user_report())
+    if command == 'history':
+        return _local_result(input_text, agent.render_ask_user_history_report())
+    return _local_result(input_text, 'Usage: /ask [history]')
+
+
 def _handle_login(agent: 'LocalCodingAgent', args: str, input_text: str) -> SlashCommandResult:
     target = args.strip()
     if not target:
@@ -427,6 +456,23 @@ def _handle_resource(agent: 'LocalCodingAgent', args: str, input_text: str) -> S
 def _handle_tasks(agent: 'LocalCodingAgent', args: str, input_text: str) -> SlashCommandResult:
     status = args or None
     return _local_result(input_text, agent.render_tasks_report(status))
+
+
+def _handle_teams(agent: 'LocalCodingAgent', args: str, input_text: str) -> SlashCommandResult:
+    query = args or None
+    return _local_result(input_text, agent.render_teams_report(query))
+
+
+def _handle_team(agent: 'LocalCodingAgent', args: str, input_text: str) -> SlashCommandResult:
+    team_name = args.strip()
+    if not team_name:
+        return _local_result(input_text, 'Usage: /team <team-name>')
+    return _local_result(input_text, agent.render_team_report(team_name))
+
+
+def _handle_messages(agent: 'LocalCodingAgent', args: str, input_text: str) -> SlashCommandResult:
+    team_name = args.strip() or None
+    return _local_result(input_text, agent.render_team_messages_report(team_name))
 
 
 def _handle_task_next(agent: 'LocalCodingAgent', _args: str, input_text: str) -> SlashCommandResult:

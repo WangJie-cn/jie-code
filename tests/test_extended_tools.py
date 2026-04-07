@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 from src.agent_tools import build_tool_context, default_tool_registry, execute_tool
-from src.agent_types import AgentRuntimeConfig
+from src.agent_types import AgentPermissions, AgentRuntimeConfig
 
 
 class ExtendedToolTests(unittest.TestCase):
@@ -65,3 +65,39 @@ class ExtendedToolTests(unittest.TestCase):
         self.assertTrue(result.ok)
         self.assertIn('slept for', result.content)
         self.assertEqual(result.metadata.get('action'), 'sleep')
+
+    def test_notebook_edit_updates_ipynb_cell(self) -> None:
+        registry = default_tool_registry()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workspace = Path(tmp_dir)
+            notebook = workspace / 'demo.ipynb'
+            notebook.write_text(
+                '{\n'
+                ' "cells": [\n'
+                '  {"cell_type": "code", "metadata": {}, "source": ["print(1)\\n"], "outputs": [], "execution_count": null}\n'
+                ' ],\n'
+                ' "metadata": {},\n'
+                ' "nbformat": 4,\n'
+                ' "nbformat_minor": 5\n'
+                '}\n',
+                encoding='utf-8',
+            )
+            context = build_tool_context(
+                AgentRuntimeConfig(
+                    cwd=workspace,
+                    permissions=AgentPermissions(allow_file_write=True),
+                ),
+                tool_registry=registry,
+            )
+            result = execute_tool(
+                registry,
+                'notebook_edit',
+                {'path': 'demo.ipynb', 'cell_index': 0, 'source': 'print(2)\n'},
+                context,
+            )
+            updated = notebook.read_text(encoding='utf-8')
+
+        self.assertTrue(result.ok)
+        self.assertIn('updated notebook cell 0', result.content)
+        self.assertIn('print(2)', updated)
+        self.assertEqual(result.metadata.get('action'), 'notebook_edit')

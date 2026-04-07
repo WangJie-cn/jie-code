@@ -10,6 +10,7 @@ from typing import Callable
 
 from .background_runtime import BackgroundSessionRuntime, build_background_worker_command
 from .account_runtime import AccountRuntime
+from .ask_user_runtime import AskUserRuntime
 from .agent_runtime import LocalCodingAgent
 from .agent_types import (
     AgentPermissions,
@@ -37,6 +38,7 @@ from .remote_runtime import (
     run_teleport_mode,
 )
 from .search_runtime import SearchRuntime
+from .team_runtime import TeamRuntime
 from .runtime import PortRuntime
 from .session_store import (
     StoredAgentSession,
@@ -613,6 +615,10 @@ def build_parser() -> argparse.ArgumentParser:
     account_login_parser.add_argument('--cwd', default='.')
     account_logout_parser = subparsers.add_parser('account-logout', help='clear the active local account session')
     account_logout_parser.add_argument('--cwd', default='.')
+    ask_status_parser = subparsers.add_parser('ask-status', help='show local ask-user runtime status')
+    ask_status_parser.add_argument('--cwd', default='.')
+    ask_history_parser = subparsers.add_parser('ask-history', help='show local ask-user interaction history')
+    ask_history_parser.add_argument('--cwd', default='.')
     search_status_parser = subparsers.add_parser('search-status', help='show local search runtime status')
     search_status_parser.add_argument('--cwd', default='.')
     search_status_parser.add_argument('--provider')
@@ -661,6 +667,25 @@ def build_parser() -> argparse.ArgumentParser:
     config_set_parser.add_argument('value_json')
     config_set_parser.add_argument('--source', default='local')
     config_set_parser.add_argument('--cwd', default='.')
+    teams_status_parser = subparsers.add_parser('team-status', help='show local collaboration team runtime summary')
+    teams_status_parser.add_argument('--cwd', default='.')
+    teams_list_parser = subparsers.add_parser('team-list', help='list local collaboration teams')
+    teams_list_parser.add_argument('--cwd', default='.')
+    teams_list_parser.add_argument('--query')
+    team_get_parser = subparsers.add_parser('team-get', help='show one local collaboration team')
+    team_get_parser.add_argument('team_name')
+    team_get_parser.add_argument('--cwd', default='.')
+    team_create_parser = subparsers.add_parser('team-create', help='create a local collaboration team')
+    team_create_parser.add_argument('team_name')
+    team_create_parser.add_argument('--description')
+    team_create_parser.add_argument('--member', action='append', default=[])
+    team_create_parser.add_argument('--cwd', default='.')
+    team_delete_parser = subparsers.add_parser('team-delete', help='delete a local collaboration team')
+    team_delete_parser.add_argument('team_name')
+    team_delete_parser.add_argument('--cwd', default='.')
+    team_messages_parser = subparsers.add_parser('team-messages', help='show local team messages')
+    team_messages_parser.add_argument('--team-name')
+    team_messages_parser.add_argument('--cwd', default='.')
 
     show_command = subparsers.add_parser('show-command', help='show one mirrored command entry by exact name')
     show_command.add_argument('name')
@@ -905,6 +930,16 @@ def main(argv: list[str] | None = None) -> int:
         runtime = AccountRuntime.from_workspace(Path(args.cwd).resolve())
         print(runtime.logout().as_text())
         return 0
+    if args.command == 'ask-status':
+        runtime = AskUserRuntime.from_workspace(Path(args.cwd).resolve())
+        print('# Ask User')
+        print()
+        print(runtime.render_summary())
+        return 0
+    if args.command == 'ask-history':
+        runtime = AskUserRuntime.from_workspace(Path(args.cwd).resolve())
+        print(runtime.render_history())
+        return 0
     if args.command == 'search-status':
         runtime = SearchRuntime.from_workspace(Path(args.cwd).resolve())
         if args.provider:
@@ -1002,6 +1037,54 @@ def main(argv: list[str] | None = None) -> int:
         print(f'store_path={mutation.store_path}')
         print(f'effective_key_count={mutation.effective_key_count}')
         print(runtime.render_value(args.key_path))
+        return 0
+    if args.command == 'team-status':
+        runtime = TeamRuntime.from_workspace(Path(args.cwd).resolve())
+        print('# Teams')
+        print()
+        print(runtime.render_summary())
+        return 0
+    if args.command == 'team-list':
+        runtime = TeamRuntime.from_workspace(Path(args.cwd).resolve())
+        print(runtime.render_teams_index(query=args.query))
+        return 0
+    if args.command == 'team-get':
+        runtime = TeamRuntime.from_workspace(Path(args.cwd).resolve())
+        try:
+            print(runtime.render_team(args.team_name))
+        except KeyError:
+            print(f'Unknown team: {args.team_name}')
+            return 1
+        return 0
+    if args.command == 'team-create':
+        runtime = TeamRuntime.from_workspace(Path(args.cwd).resolve())
+        try:
+            team = runtime.create_team(
+                args.team_name,
+                description=args.description,
+                members=args.member,
+            )
+        except KeyError:
+            print(f'Team already exists: {args.team_name}')
+            return 1
+        print(f'created team {team.name}')
+        return 0
+    if args.command == 'team-delete':
+        runtime = TeamRuntime.from_workspace(Path(args.cwd).resolve())
+        try:
+            team = runtime.delete_team(args.team_name)
+        except KeyError:
+            print(f'Unknown team: {args.team_name}')
+            return 1
+        print(f'deleted team {team.name}')
+        return 0
+    if args.command == 'team-messages':
+        runtime = TeamRuntime.from_workspace(Path(args.cwd).resolve())
+        try:
+            print(runtime.render_messages(team_name=args.team_name))
+        except KeyError:
+            print(f'Unknown team: {args.team_name}')
+            return 1
         return 0
     if args.command == 'show-command':
         module = get_command(args.name)

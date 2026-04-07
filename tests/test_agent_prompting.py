@@ -186,6 +186,25 @@ class AgentPromptingTests(unittest.TestCase):
         prompt = render_system_prompt(parts)
         self.assertIn('# Account', prompt)
 
+    def test_prompt_builder_mentions_ask_user_when_runtime_is_loaded(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workspace = Path(tmp_dir)
+            (workspace / '.claw-ask-user.json').write_text(
+                '{"answers":[{"question":"Approve deploy?","answer":"yes"}]}',
+                encoding='utf-8',
+            )
+            runtime_config = AgentRuntimeConfig(cwd=workspace)
+            model_config = ModelConfig(model='Qwen/Qwen3-Coder-30B-A3B-Instruct')
+            prompt_context = build_prompt_context(runtime_config, model_config)
+            parts = build_system_prompt_parts(
+                prompt_context=prompt_context,
+                runtime_config=runtime_config,
+                tools=default_tool_registry(),
+            )
+
+        prompt = render_system_prompt(parts)
+        self.assertIn('# Ask User', prompt)
+
     def test_prompt_builder_mentions_config_when_runtime_is_loaded(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             workspace = Path(tmp_dir)
@@ -223,6 +242,25 @@ class AgentPromptingTests(unittest.TestCase):
 
         prompt = render_system_prompt(parts)
         self.assertIn('# Tasks', prompt)
+
+    def test_prompt_builder_mentions_teams_when_runtime_is_loaded(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workspace = Path(tmp_dir)
+            (workspace / '.claw-teams.json').write_text(
+                '{"teams":[{"name":"reviewers","members":["alice","bob"]}]}',
+                encoding='utf-8',
+            )
+            runtime_config = AgentRuntimeConfig(cwd=workspace)
+            model_config = ModelConfig(model='Qwen/Qwen3-Coder-30B-A3B-Instruct')
+            prompt_context = build_prompt_context(runtime_config, model_config)
+            parts = build_system_prompt_parts(
+                prompt_context=prompt_context,
+                runtime_config=runtime_config,
+                tools=default_tool_registry(),
+            )
+
+        prompt = render_system_prompt(parts)
+        self.assertIn('# Teams', prompt)
 
     def test_prompt_builder_mentions_planning_when_runtime_is_loaded(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

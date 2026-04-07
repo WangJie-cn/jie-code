@@ -12,9 +12,11 @@ from src.agent_context import (
     clear_context_caches,
     set_system_prompt_injection,
 )
+from src.ask_user_runtime import AskUserRuntime
 from src.plan_runtime import PlanRuntime
 from src.agent_types import AgentRuntimeConfig
 from src.task_runtime import TaskRuntime
+from src.team_runtime import TeamRuntime
 
 
 class AgentContextTests(unittest.TestCase):
@@ -151,6 +153,20 @@ class AgentContextTests(unittest.TestCase):
         self.assertIn('Configured account profiles: 1', snapshot.user_context['accountRuntime'])
         self.assertIn('dev@example.com', snapshot.user_context['accountRuntime'])
 
+    def test_user_context_loads_ask_user_runtime_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workspace = Path(tmp_dir) / 'repo'
+            workspace.mkdir(parents=True)
+            (workspace / '.claw-ask-user.json').write_text(
+                '{"answers":[{"question":"Approve deploy?","answer":"yes"}]}',
+                encoding='utf-8',
+            )
+
+            snapshot = build_context_snapshot(AgentRuntimeConfig(cwd=workspace))
+
+        self.assertIn('askUserRuntime', snapshot.user_context)
+        self.assertIn('Queued answers: 1', snapshot.user_context['askUserRuntime'])
+
     def test_user_context_loads_config_runtime_summary(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             workspace = Path(tmp_dir) / 'repo'
@@ -194,6 +210,18 @@ class AgentContextTests(unittest.TestCase):
 
         self.assertIn('planRuntime', snapshot.user_context)
         self.assertIn('Total plan steps: 1', snapshot.user_context['planRuntime'])
+
+    def test_user_context_loads_team_runtime_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workspace = Path(tmp_dir) / 'repo'
+            workspace.mkdir(parents=True)
+            runtime = TeamRuntime.from_workspace(workspace)
+            runtime.create_team('reviewers', members=['alice', 'bob'])
+
+            snapshot = build_context_snapshot(AgentRuntimeConfig(cwd=workspace))
+
+        self.assertIn('teamRuntime', snapshot.user_context)
+        self.assertIn('Configured teams: 1', snapshot.user_context['teamRuntime'])
 
     @unittest.skipIf(shutil.which('git') is None, 'git is required for git context tests')
     def test_git_status_snapshot_contains_branch_and_status(self) -> None:
