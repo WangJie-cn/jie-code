@@ -47,10 +47,13 @@ from .openai_compat import OpenAICompatClient, OpenAICompatError
 from .plan_runtime import PlanRuntime
 from .plugin_runtime import PluginRuntime
 from .remote_runtime import RemoteRuntime
+from .remote_trigger_runtime import RemoteTriggerRuntime
 from .search_runtime import SearchRuntime
 from .task_runtime import TaskRuntime
 from .team_runtime import TeamRuntime
 from .tokenizer_runtime import describe_token_counter
+from .workflow_runtime import WorkflowRuntime
+from .worktree_runtime import WorktreeRuntime
 from .session_store import (
     StoredAgentSession,
     load_agent_session,
@@ -84,6 +87,7 @@ class LocalCodingAgent:
     hook_policy_runtime: HookPolicyRuntime | None = None
     mcp_runtime: MCPRuntime | None = None
     remote_runtime: RemoteRuntime | None = None
+    remote_trigger_runtime: RemoteTriggerRuntime | None = None
     search_runtime: SearchRuntime | None = None
     account_runtime: AccountRuntime | None = None
     ask_user_runtime: AskUserRuntime | None = None
@@ -91,6 +95,8 @@ class LocalCodingAgent:
     plan_runtime: PlanRuntime | None = None
     task_runtime: TaskRuntime | None = None
     team_runtime: TeamRuntime | None = None
+    workflow_runtime: WorkflowRuntime | None = None
+    worktree_runtime: WorktreeRuntime | None = None
     last_session: AgentSessionState | None = field(default=None, init=False, repr=False)
     last_run_result: AgentRunResult | None = field(default=None, init=False, repr=False)
     active_session_id: str | None = field(default=None, init=False, repr=False)
@@ -123,6 +129,11 @@ class LocalCodingAgent:
                 self.runtime_config.cwd,
                 tuple(str(path) for path in self.runtime_config.additional_working_directories),
             )
+        if self.remote_trigger_runtime is None:
+            self.remote_trigger_runtime = RemoteTriggerRuntime.from_workspace(
+                self.runtime_config.cwd,
+                tuple(str(path) for path in self.runtime_config.additional_working_directories),
+            )
         if self.search_runtime is None:
             self.search_runtime = SearchRuntime.from_workspace(
                 self.runtime_config.cwd,
@@ -149,6 +160,13 @@ class LocalCodingAgent:
                 self.runtime_config.cwd,
                 tuple(str(path) for path in self.runtime_config.additional_working_directories),
             )
+        if self.workflow_runtime is None:
+            self.workflow_runtime = WorkflowRuntime.from_workspace(
+                self.runtime_config.cwd,
+                tuple(str(path) for path in self.runtime_config.additional_working_directories),
+            )
+        if self.worktree_runtime is None:
+            self.worktree_runtime = WorktreeRuntime.from_workspace(self.runtime_config.cwd)
         self.runtime_config = self._apply_hook_policy_budget_overrides(self.runtime_config)
         registry = dict(self.tool_registry)
         plugin_tools = self.plugin_runtime.register_tool_aliases(registry)
@@ -173,9 +191,12 @@ class LocalCodingAgent:
             config_runtime=self.config_runtime,
             mcp_runtime=self.mcp_runtime,
             remote_runtime=self.remote_runtime,
+            remote_trigger_runtime=self.remote_trigger_runtime,
             plan_runtime=self.plan_runtime,
             task_runtime=self.task_runtime,
             team_runtime=self.team_runtime,
+            workflow_runtime=self.workflow_runtime,
+            worktree_runtime=self.worktree_runtime,
         )
 
     def set_model(self, model: str) -> None:
@@ -3021,6 +3042,45 @@ class LocalCodingAgent:
         clear_context_caches()
         return '\n'.join(['# Remote', '', report.as_text()])
 
+    def render_worktree_report(self) -> str:
+        if self.worktree_runtime is None:
+            return '# Worktree\n\nNo local worktree runtime is available.'
+        return '\n'.join(['# Worktree', '', self.worktree_runtime.render_summary()])
+
+    def render_worktree_enter_report(self, name: str | None = None) -> str:
+        if self.worktree_runtime is None:
+            return '# Worktree\n\nNo local worktree runtime is available.'
+        try:
+            report = self.worktree_runtime.enter(name=name)
+        except (RuntimeError, ValueError) as exc:
+            return f'# Worktree\n\n{exc}'
+        self._apply_runtime_cwd_update(Path(report.worktree_path or self.runtime_config.cwd))
+        return '\n'.join(['# Worktree', '', report.as_text()])
+
+    def render_worktree_exit_report(
+        self,
+        *,
+        action: str = 'keep',
+        discard_changes: bool = False,
+    ) -> str:
+        if self.worktree_runtime is None:
+            return '# Worktree\n\nNo local worktree runtime is available.'
+        try:
+            report = self.worktree_runtime.exit(
+                action=action,
+                discard_changes=discard_changes,
+            )
+        except (RuntimeError, ValueError) as exc:
+            return f'# Worktree\n\n{exc}'
+        target_cwd = report.original_cwd or report.current_cwd or str(self.runtime_config.cwd)
+        self._apply_runtime_cwd_update(Path(target_cwd))
+        return '\n'.join(['# Worktree', '', report.as_text()])
+
+    def render_worktree_history_report(self) -> str:
+        if self.worktree_runtime is None:
+            return '# Worktree History\n\nNo local worktree runtime is available.'
+        return self.worktree_runtime.render_history()
+
     def render_mcp_resources_report(self, query: str | None = None) -> str:
         if self.mcp_runtime is None:
             return '# MCP Resources\n\nNo local MCP manifests, servers, or resources discovered.'
@@ -3109,6 +3169,81 @@ class LocalCodingAgent:
             return self.team_runtime.render_messages(team_name=team_name)
         except KeyError:
             return f'# Team Messages\n\nUnknown team: {team_name}'
+
+    def render_workflows_report(self, query: str | None = None) -> str:
+        if self.workflow_runtime is None or not self.workflow_runtime.has_workflows():
+            return '# Workflows\n\nNo local workflow runtime is available.'
+        return self.workflow_runtime.render_workflows_index(query=query)
+
+    def render_workflow_report(self, workflow_name: str) -> str:
+        if self.workflow_runtime is None or not self.workflow_runtime.has_workflows():
+            return '# Workflow\n\nNo local workflow runtime is available.'
+        try:
+            return self.workflow_runtime.render_workflow(workflow_name)
+        except KeyError:
+            return f'# Workflow\n\nUnknown workflow: {workflow_name}'
+
+    def render_workflow_run_report(
+        self,
+        workflow_name: str,
+        *,
+        arguments: dict[str, Any] | None = None,
+    ) -> str:
+        if self.workflow_runtime is None or not self.workflow_runtime.has_workflows():
+            return '# Workflow Run\n\nNo local workflow runtime is available.'
+        try:
+            return self.workflow_runtime.render_run_report(
+                workflow_name,
+                arguments=arguments,
+            )
+        except KeyError:
+            return f'# Workflow Run\n\nUnknown workflow: {workflow_name}'
+
+    def render_remote_triggers_report(self, query: str | None = None) -> str:
+        if self.remote_trigger_runtime is None or not self.remote_trigger_runtime.has_state():
+            return '# Remote Triggers\n\nNo local remote trigger runtime is available.'
+        return self.remote_trigger_runtime.render_trigger_index(query=query)
+
+    def render_remote_trigger_report(self, trigger_id: str) -> str:
+        if self.remote_trigger_runtime is None or not self.remote_trigger_runtime.has_state():
+            return '# Remote Trigger\n\nNo local remote trigger runtime is available.'
+        try:
+            return self.remote_trigger_runtime.render_trigger(trigger_id)
+        except KeyError:
+            return f'# Remote Trigger\n\nUnknown remote trigger: {trigger_id}'
+
+    def render_remote_trigger_action_report(
+        self,
+        action: str,
+        *,
+        trigger_id: str | None = None,
+        body: dict[str, Any] | None = None,
+    ) -> str:
+        if self.remote_trigger_runtime is None:
+            return '# Remote Trigger\n\nNo local remote trigger runtime is available.'
+        normalized = action.strip().lower()
+        try:
+            if normalized == 'list':
+                return self.remote_trigger_runtime.render_trigger_index()
+            if normalized == 'get':
+                if not trigger_id:
+                    return '# Remote Trigger\n\ntrigger_id is required for get'
+                return self.remote_trigger_runtime.render_trigger(trigger_id)
+            if normalized == 'create':
+                created = self.remote_trigger_runtime.create_trigger(body or {})
+                return self.remote_trigger_runtime.render_trigger(created.trigger_id)
+            if normalized == 'update':
+                if not trigger_id:
+                    return '# Remote Trigger\n\ntrigger_id is required for update'
+                updated = self.remote_trigger_runtime.update_trigger(trigger_id, body or {})
+                return self.remote_trigger_runtime.render_trigger(updated.trigger_id)
+            if normalized == 'run':
+                if not trigger_id:
+                    return '# Remote Trigger Run\n\ntrigger_id is required for run'
+                return self.remote_trigger_runtime.render_run_report(trigger_id, body=body)
+        except (KeyError, TypeError, ValueError) as exc:
+            return f'# Remote Trigger\n\n{exc}'
+        return '# Remote Trigger\n\naction must be one of list, get, create, update, or run'
 
     def render_hook_policy_report(self) -> str:
         if self.hook_policy_runtime is None:
@@ -3235,6 +3370,9 @@ class LocalCodingAgent:
     ) -> None:
         if not tool_result.ok:
             return
+        cwd_update = tool_result.metadata.get('cwd_update')
+        if isinstance(cwd_update, str) and cwd_update:
+            self._apply_runtime_cwd_update(Path(cwd_update))
         refresh_tool_names = {
             'update_plan',
             'plan_clear',
@@ -3255,6 +3393,10 @@ class LocalCodingAgent:
             'team_create',
             'team_delete',
             'send_message',
+            'workflow_run',
+            'remote_trigger',
+            'worktree_enter',
+            'worktree_exit',
         }
         if tool_name not in refresh_tool_names:
             return
@@ -3264,6 +3406,11 @@ class LocalCodingAgent:
         )
         if tool_name.startswith('remote_'):
             self.remote_runtime = RemoteRuntime.from_workspace(
+                self.runtime_config.cwd,
+                additional_working_directories=additional_dirs,
+            )
+        if tool_name == 'remote_trigger':
+            self.remote_trigger_runtime = RemoteTriggerRuntime.from_workspace(
                 self.runtime_config.cwd,
                 additional_working_directories=additional_dirs,
             )
@@ -3293,6 +3440,13 @@ class LocalCodingAgent:
                 self.runtime_config.cwd,
                 additional_working_directories=additional_dirs,
             )
+        if tool_name.startswith('workflow_'):
+            self.workflow_runtime = WorkflowRuntime.from_workspace(
+                self.runtime_config.cwd,
+                additional_working_directories=additional_dirs,
+            )
+        if tool_name.startswith('worktree_'):
+            self.worktree_runtime = WorktreeRuntime.from_workspace(self.runtime_config.cwd)
         self.tool_context = replace(
             self.tool_context,
             tool_registry=self.tool_registry,
@@ -3301,9 +3455,97 @@ class LocalCodingAgent:
             ask_user_runtime=self.ask_user_runtime,
             config_runtime=self.config_runtime,
             remote_runtime=self.remote_runtime,
+            remote_trigger_runtime=self.remote_trigger_runtime,
             plan_runtime=self.plan_runtime,
             task_runtime=self.task_runtime,
             team_runtime=self.team_runtime,
+            workflow_runtime=self.workflow_runtime,
+            worktree_runtime=self.worktree_runtime,
+        )
+
+    def _apply_runtime_cwd_update(self, new_cwd: Path) -> None:
+        resolved_cwd = new_cwd.resolve()
+        if resolved_cwd == self.runtime_config.cwd.resolve():
+            return
+        self.runtime_config = replace(self.runtime_config, cwd=resolved_cwd)
+        clear_context_caches()
+        additional_dirs = tuple(
+            str(path) for path in self.runtime_config.additional_working_directories
+        )
+        self.plugin_runtime = PluginRuntime.from_workspace(
+            self.runtime_config.cwd,
+            additional_dirs,
+        )
+        self.hook_policy_runtime = HookPolicyRuntime.from_workspace(
+            self.runtime_config.cwd,
+            additional_dirs,
+        )
+        self.mcp_runtime = MCPRuntime.from_workspace(
+            self.runtime_config.cwd,
+            additional_dirs,
+        )
+        self.remote_runtime = RemoteRuntime.from_workspace(
+            self.runtime_config.cwd,
+            additional_dirs,
+        )
+        self.remote_trigger_runtime = RemoteTriggerRuntime.from_workspace(
+            self.runtime_config.cwd,
+            additional_dirs,
+        )
+        self.search_runtime = SearchRuntime.from_workspace(
+            self.runtime_config.cwd,
+            additional_dirs,
+        )
+        self.account_runtime = AccountRuntime.from_workspace(
+            self.runtime_config.cwd,
+            additional_dirs,
+        )
+        self.ask_user_runtime = AskUserRuntime.from_workspace(
+            self.runtime_config.cwd,
+            additional_dirs,
+        )
+        self.config_runtime = ConfigRuntime.from_workspace(self.runtime_config.cwd)
+        self.task_runtime = TaskRuntime.from_workspace(self.runtime_config.cwd)
+        self.plan_runtime = PlanRuntime.from_workspace(self.runtime_config.cwd)
+        self.team_runtime = TeamRuntime.from_workspace(
+            self.runtime_config.cwd,
+            additional_dirs,
+        )
+        self.workflow_runtime = WorkflowRuntime.from_workspace(
+            self.runtime_config.cwd,
+            additional_dirs,
+        )
+        self.worktree_runtime = WorktreeRuntime.from_workspace(self.runtime_config.cwd)
+        self.runtime_config = self._apply_hook_policy_budget_overrides(self.runtime_config)
+        registry = dict(default_tool_registry())
+        if self.plugin_runtime is not None:
+            alias_tools = self.plugin_runtime.register_tool_aliases(registry)
+            if alias_tools:
+                registry = {**registry, **alias_tools}
+            virtual_tools = self.plugin_runtime.register_virtual_tools(registry)
+            if virtual_tools:
+                registry = {**registry, **virtual_tools}
+        self.tool_registry = registry
+        self.tool_context = build_tool_context(
+            self.runtime_config,
+            tool_registry=self.tool_registry,
+            extra_env=(
+                self.hook_policy_runtime.safe_env()
+                if self.hook_policy_runtime is not None
+                else None
+            ),
+            search_runtime=self.search_runtime,
+            account_runtime=self.account_runtime,
+            ask_user_runtime=self.ask_user_runtime,
+            config_runtime=self.config_runtime,
+            mcp_runtime=self.mcp_runtime,
+            remote_runtime=self.remote_runtime,
+            remote_trigger_runtime=self.remote_trigger_runtime,
+            plan_runtime=self.plan_runtime,
+            task_runtime=self.task_runtime,
+            team_runtime=self.team_runtime,
+            workflow_runtime=self.workflow_runtime,
+            worktree_runtime=self.worktree_runtime,
         )
 
     def _apply_plugin_before_prompt_hooks(self, prompt: str) -> str:

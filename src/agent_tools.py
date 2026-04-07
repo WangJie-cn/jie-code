@@ -23,9 +23,12 @@ if TYPE_CHECKING:
     from .mcp_runtime import MCPRuntime
     from .plan_runtime import PlanRuntime
     from .remote_runtime import RemoteRuntime
+    from .remote_trigger_runtime import RemoteTriggerRuntime
     from .search_runtime import SearchRuntime
     from .task_runtime import TaskRuntime
     from .team_runtime import TeamRuntime
+    from .workflow_runtime import WorkflowRuntime
+    from .worktree_runtime import WorktreeRuntime
 
 
 class ToolPermissionError(RuntimeError):
@@ -50,9 +53,12 @@ class ToolExecutionContext:
     config_runtime: 'ConfigRuntime | None' = None
     mcp_runtime: 'MCPRuntime | None' = None
     remote_runtime: 'RemoteRuntime | None' = None
+    remote_trigger_runtime: 'RemoteTriggerRuntime | None' = None
     plan_runtime: 'PlanRuntime | None' = None
     task_runtime: 'TaskRuntime | None' = None
     team_runtime: 'TeamRuntime | None' = None
+    workflow_runtime: 'WorkflowRuntime | None' = None
+    worktree_runtime: 'WorktreeRuntime | None' = None
 
 
 ToolHandler = Callable[
@@ -122,9 +128,12 @@ def build_tool_context(
     config_runtime: 'ConfigRuntime | None' = None,
     mcp_runtime: 'MCPRuntime | None' = None,
     remote_runtime: 'RemoteRuntime | None' = None,
+    remote_trigger_runtime: 'RemoteTriggerRuntime | None' = None,
     plan_runtime: 'PlanRuntime | None' = None,
     task_runtime: 'TaskRuntime | None' = None,
     team_runtime: 'TeamRuntime | None' = None,
+    workflow_runtime: 'WorkflowRuntime | None' = None,
+    worktree_runtime: 'WorktreeRuntime | None' = None,
 ) -> ToolExecutionContext:
     return ToolExecutionContext(
         root=config.cwd.resolve(),
@@ -139,9 +148,12 @@ def build_tool_context(
         config_runtime=config_runtime,
         mcp_runtime=mcp_runtime,
         remote_runtime=remote_runtime,
+        remote_trigger_runtime=remote_trigger_runtime,
         plan_runtime=plan_runtime,
         task_runtime=task_runtime,
         team_runtime=team_runtime,
+        workflow_runtime=workflow_runtime,
+        worktree_runtime=worktree_runtime,
     )
 
 
@@ -609,6 +621,91 @@ def default_tool_registry() -> dict[str, AgentTool]:
                 },
             },
             handler=_remote_disconnect,
+        ),
+        AgentTool(
+            name='worktree_status',
+            description='Show the current managed git worktree session status.',
+            parameters={
+                'type': 'object',
+                'properties': {},
+            },
+            handler=_worktree_status,
+        ),
+        AgentTool(
+            name='worktree_enter',
+            description='Create an isolated git worktree and switch the current agent session into it.',
+            parameters={
+                'type': 'object',
+                'properties': {
+                    'name': {'type': 'string'},
+                },
+            },
+            handler=_worktree_enter,
+        ),
+        AgentTool(
+            name='worktree_exit',
+            description='Leave the active managed worktree session and optionally remove the worktree.',
+            parameters={
+                'type': 'object',
+                'properties': {
+                    'action': {'type': 'string'},
+                    'discard_changes': {'type': 'boolean'},
+                },
+            },
+            handler=_worktree_exit,
+        ),
+        AgentTool(
+            name='workflow_list',
+            description='List local workflow definitions discovered from workspace workflow manifests.',
+            parameters={
+                'type': 'object',
+                'properties': {
+                    'query': {'type': 'string'},
+                    'max_workflows': {'type': 'integer', 'minimum': 1, 'maximum': 200},
+                },
+            },
+            handler=_workflow_list,
+        ),
+        AgentTool(
+            name='workflow_get',
+            description='Show one local workflow definition by name.',
+            parameters={
+                'type': 'object',
+                'properties': {
+                    'workflow_name': {'type': 'string'},
+                },
+                'required': ['workflow_name'],
+            },
+            handler=_workflow_get,
+        ),
+        AgentTool(
+            name='workflow_run',
+            description='Record and render a local workflow execution request from a workflow manifest.',
+            parameters={
+                'type': 'object',
+                'properties': {
+                    'workflow_name': {'type': 'string'},
+                    'arguments': {'type': 'object'},
+                },
+                'required': ['workflow_name'],
+            },
+            handler=_workflow_run,
+        ),
+        AgentTool(
+            name='remote_trigger',
+            description='List, inspect, create, update, or run local remote triggers similar to the npm remote trigger tool.',
+            parameters={
+                'type': 'object',
+                'properties': {
+                    'action': {'type': 'string'},
+                    'trigger_id': {'type': 'string'},
+                    'body': {'type': 'object'},
+                    'query': {'type': 'string'},
+                    'max_triggers': {'type': 'integer', 'minimum': 1, 'maximum': 200},
+                },
+                'required': ['action'],
+            },
+            handler=_remote_trigger,
         ),
         AgentTool(
             name='plan_get',
@@ -1843,6 +1940,213 @@ def _remote_disconnect(
     )
 
 
+def _worktree_status(
+    arguments: dict[str, Any],
+    context: ToolExecutionContext,
+) -> str:
+    _ = arguments
+    runtime = _require_worktree_runtime(context)
+    return '\n'.join(['# Worktree', '', runtime.render_summary()])
+
+
+def _worktree_enter(
+    arguments: dict[str, Any],
+    context: ToolExecutionContext,
+) -> tuple[str, dict[str, Any]]:
+    runtime = _require_worktree_runtime(context)
+    name = arguments.get('name')
+    if name is not None and not isinstance(name, str):
+        raise ToolExecutionError('name must be a string')
+    try:
+        report = runtime.enter(name=name)
+    except (RuntimeError, ValueError) as exc:
+        raise ToolExecutionError(str(exc)) from exc
+    return (
+        report.as_text(),
+        {
+            'action': 'worktree_enter',
+            'cwd_update': report.worktree_path,
+            'repo_root': report.repo_root,
+            'worktree_path': report.worktree_path,
+            'worktree_branch': report.worktree_branch,
+            'session_name': report.session_name,
+            'before_cwd': report.original_cwd,
+            'after_cwd': report.worktree_path,
+            'path': report.worktree_path,
+        },
+    )
+
+
+def _worktree_exit(
+    arguments: dict[str, Any],
+    context: ToolExecutionContext,
+) -> tuple[str, dict[str, Any]]:
+    runtime = _require_worktree_runtime(context)
+    action = arguments.get('action', 'keep')
+    discard_changes = arguments.get('discard_changes', False)
+    if not isinstance(action, str):
+        raise ToolExecutionError('action must be a string')
+    if not isinstance(discard_changes, bool):
+        raise ToolExecutionError('discard_changes must be a boolean')
+    try:
+        report = runtime.exit(
+            action=action,
+            discard_changes=discard_changes,
+        )
+    except (RuntimeError, ValueError) as exc:
+        raise ToolExecutionError(str(exc)) from exc
+    return (
+        report.as_text(),
+        {
+            'action': 'worktree_exit',
+            'cwd_update': report.original_cwd or report.current_cwd,
+            'repo_root': report.repo_root,
+            'worktree_path': report.worktree_path,
+            'worktree_branch': report.worktree_branch,
+            'session_name': report.session_name,
+            'before_cwd': report.worktree_path,
+            'after_cwd': report.original_cwd or report.current_cwd,
+            'exit_action': report.metadata.get('action'),
+            'discard_changes': report.metadata.get('discard_changes'),
+            'path': report.worktree_path,
+        },
+    )
+
+
+def _workflow_list(arguments: dict[str, Any], context: ToolExecutionContext) -> str:
+    runtime = _require_workflow_runtime(context)
+    query = arguments.get('query')
+    if query is not None and not isinstance(query, str):
+        raise ToolExecutionError('query must be a string')
+    max_workflows = _coerce_int(arguments, 'max_workflows', 50)
+    workflows = runtime.list_workflows(query=query, limit=max_workflows)
+    lines = ['# Workflows', '']
+    if not workflows:
+        lines.append('No local workflows discovered.')
+        return '\n'.join(lines)
+    for workflow in workflows:
+        description = workflow.description or 'No description.'
+        lines.append(f'- {workflow.name} ; steps={len(workflow.steps)} ; {description}')
+    return '\n'.join(lines)
+
+
+def _workflow_get(arguments: dict[str, Any], context: ToolExecutionContext) -> str:
+    runtime = _require_workflow_runtime(context)
+    workflow_name = _require_string(arguments, 'workflow_name')
+    try:
+        return runtime.render_workflow(workflow_name)
+    except KeyError as exc:
+        raise ToolExecutionError(f'Unknown workflow: {workflow_name}') from exc
+
+
+def _workflow_run(
+    arguments: dict[str, Any],
+    context: ToolExecutionContext,
+) -> tuple[str, dict[str, Any]]:
+    runtime = _require_workflow_runtime(context)
+    workflow_name = _require_string(arguments, 'workflow_name')
+    raw_arguments = arguments.get('arguments', {})
+    if raw_arguments is None:
+        raw_arguments = {}
+    if not isinstance(raw_arguments, dict):
+        raise ToolExecutionError('arguments must be an object')
+    try:
+        rendered = runtime.render_run_report(workflow_name, arguments=raw_arguments)
+    except KeyError as exc:
+        raise ToolExecutionError(f'Unknown workflow: {workflow_name}') from exc
+    return (
+        rendered,
+        {
+            'action': 'workflow_run',
+            'workflow_name': workflow_name,
+            'argument_keys': sorted(str(key) for key in raw_arguments.keys()),
+        },
+    )
+
+
+def _remote_trigger(
+    arguments: dict[str, Any],
+    context: ToolExecutionContext,
+) -> tuple[str, dict[str, Any]]:
+    runtime = _require_remote_trigger_runtime(context)
+    action = _require_string(arguments, 'action').strip().lower()
+    if action == 'list':
+        query = arguments.get('query')
+        if query is not None and not isinstance(query, str):
+            raise ToolExecutionError('query must be a string')
+        max_triggers = _coerce_int(arguments, 'max_triggers', 50)
+        rendered = runtime.render_trigger_index(query=query)
+        return (
+            rendered,
+            {
+                'action': 'remote_trigger',
+                'remote_trigger_action': action,
+                'listed_triggers': len(runtime.list_triggers(query=query, limit=max_triggers)),
+            },
+        )
+    if action == 'get':
+        trigger_id = _require_string(arguments, 'trigger_id')
+        try:
+            rendered = runtime.render_trigger(trigger_id)
+        except KeyError as exc:
+            raise ToolExecutionError(f'Unknown remote trigger: {trigger_id}') from exc
+        return (
+            rendered,
+            {
+                'action': 'remote_trigger',
+                'remote_trigger_action': action,
+                'trigger_id': trigger_id,
+            },
+        )
+    body = arguments.get('body', {})
+    if body is None:
+        body = {}
+    if not isinstance(body, dict):
+        raise ToolExecutionError('body must be an object')
+    if action == 'create':
+        try:
+            trigger = runtime.create_trigger(body)
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ToolExecutionError(str(exc)) from exc
+        return (
+            runtime.render_trigger(trigger.trigger_id),
+            {
+                'action': 'remote_trigger',
+                'remote_trigger_action': action,
+                'trigger_id': trigger.trigger_id,
+            },
+        )
+    trigger_id = _require_string(arguments, 'trigger_id')
+    if action == 'update':
+        try:
+            trigger = runtime.update_trigger(trigger_id, body)
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ToolExecutionError(str(exc)) from exc
+        return (
+            runtime.render_trigger(trigger.trigger_id),
+            {
+                'action': 'remote_trigger',
+                'remote_trigger_action': action,
+                'trigger_id': trigger.trigger_id,
+            },
+        )
+    if action == 'run':
+        try:
+            rendered = runtime.render_run_report(trigger_id, body=body)
+        except KeyError as exc:
+            raise ToolExecutionError(f'Unknown remote trigger: {trigger_id}') from exc
+        return (
+            rendered,
+            {
+                'action': 'remote_trigger',
+                'remote_trigger_action': action,
+                'trigger_id': trigger_id,
+                'body_keys': sorted(str(key) for key in body.keys()),
+            },
+        )
+    raise ToolExecutionError('action must be one of list, get, create, update, or run')
+
+
 def _team_list(arguments: dict[str, Any], context: ToolExecutionContext) -> str:
     runtime = _require_team_runtime(context)
     query = arguments.get('query')
@@ -2472,6 +2776,12 @@ def _require_remote_runtime(context: ToolExecutionContext):
     return context.remote_runtime
 
 
+def _require_remote_trigger_runtime(context: ToolExecutionContext):
+    if context.remote_trigger_runtime is None:
+        raise ToolExecutionError('Local remote trigger runtime is not available.')
+    return context.remote_trigger_runtime
+
+
 def _require_plan_runtime(context: ToolExecutionContext):
     if context.plan_runtime is None:
         raise ToolExecutionError('Local plan runtime is not available.')
@@ -2488,6 +2798,18 @@ def _require_team_runtime(context: ToolExecutionContext):
     if context.team_runtime is None:
         raise ToolExecutionError('Local team runtime is not available.')
     return context.team_runtime
+
+
+def _require_workflow_runtime(context: ToolExecutionContext):
+    if context.workflow_runtime is None or not context.workflow_runtime.has_workflows():
+        raise ToolExecutionError('Local workflow runtime is not available.')
+    return context.workflow_runtime
+
+
+def _require_worktree_runtime(context: ToolExecutionContext):
+    if context.worktree_runtime is None:
+        raise ToolExecutionError('Local worktree runtime is not available.')
+    return context.worktree_runtime
 
 
 def _task_mutation_metadata(

@@ -1450,6 +1450,125 @@ python3 -m src.main agent \
   --show-transcript
 ```
 
+## 18C. Workflow Runtime
+
+### 18C.1 Prepare a workflow manifest
+
+```bash
+cat > ./test_cases/.claw-workflows.json <<'EOF'
+{
+  "workflows": [
+    {
+      "name": "review",
+      "description": "Review the current patch.",
+      "steps": [
+        {"title": "Inspect diff", "detail": "Read {path}"},
+        {"title": "Summarize findings"}
+      ],
+      "prompt": "Review changes under {path}"
+    }
+  ]
+}
+EOF
+```
+
+### 18C.2 CLI inspection and run
+
+```bash
+python3 -m src.main workflow-list --cwd ./test_cases
+python3 -m src.main workflow-get review --cwd ./test_cases
+python3 -m src.main workflow-run review --arguments-json '{"path":"src/"}' --cwd ./test_cases
+```
+
+### 18C.3 Slash commands
+
+```bash
+python3 -m src.main agent "/workflows" --cwd ./test_cases
+python3 -m src.main agent "/workflow review" --cwd ./test_cases
+python3 -m src.main agent "/workflow run review" --cwd ./test_cases
+```
+
+## 18D. Remote Trigger Runtime
+
+### 18D.1 Prepare a trigger manifest
+
+```bash
+cat > ./test_cases/.claw-triggers.json <<'EOF'
+{
+  "triggers": [
+    {
+      "trigger_id": "nightly",
+      "name": "Nightly",
+      "workflow": "review",
+      "schedule": "0 0 * * *",
+      "body": {"depth": "full"}
+    }
+  ]
+}
+EOF
+```
+
+### 18D.2 CLI inspection, create, update, and run
+
+```bash
+python3 -m src.main trigger-list --cwd ./test_cases
+python3 -m src.main trigger-get nightly --cwd ./test_cases
+python3 -m src.main trigger-create --body-json '{"trigger_id":"adhoc","name":"Adhoc","workflow":"review"}' --cwd ./test_cases
+python3 -m src.main trigger-update adhoc --body-json '{"schedule":"manual"}' --cwd ./test_cases
+python3 -m src.main trigger-run nightly --body-json '{"depth":"quick"}' --cwd ./test_cases
+```
+
+### 18D.3 Slash commands
+
+```bash
+python3 -m src.main agent "/triggers" --cwd ./test_cases
+python3 -m src.main agent "/trigger nightly" --cwd ./test_cases
+python3 -m src.main agent "/trigger run nightly" --cwd ./test_cases
+```
+
+## 18E. Worktree Runtime
+
+### 18E.1 Prepare a git workspace
+
+```bash
+cd ./test_cases
+git init
+git config user.email test@example.com
+git config user.name "Test User"
+printf 'hello\n' > README.md
+git add README.md
+git commit -m "init"
+cd ..
+```
+
+### 18E.2 CLI worktree flow
+
+```bash
+python3 -m src.main worktree-status --cwd ./test_cases
+python3 -m src.main worktree-enter preview --cwd ./test_cases
+python3 -m src.main worktree-status --cwd ./test_cases
+python3 -m src.main worktree-exit --action keep --cwd ./test_cases
+```
+
+### 18E.3 Slash commands
+
+```bash
+python3 -m src.main agent "/worktree" --cwd ./test_cases
+python3 -m src.main agent "/worktree enter preview" --cwd ./test_cases
+python3 -m src.main agent "/worktree history" --cwd ./test_cases
+python3 -m src.main agent "/worktree exit remove discard" --cwd ./test_cases
+```
+
+### 18E.4 Real agent cwd switch
+
+```bash
+python3 -m src.main agent \
+  "Create a managed worktree called preview, then write note.txt in the current working directory and summarize where the file was created." \
+  --cwd ./test_cases \
+  --allow-write \
+  --show-transcript
+```
+
 ### 18.2 Create and inspect tasks
 
 ```bash

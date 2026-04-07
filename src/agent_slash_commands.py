@@ -125,6 +125,11 @@ def get_slash_command_specs() -> tuple[SlashCommandSpec, ...]:
             handler=_handle_remote,
         ),
         SlashCommandSpec(
+            names=('worktree',),
+            description='Show managed git worktree status or enter/exit the current managed worktree session.',
+            handler=_handle_worktree,
+        ),
+        SlashCommandSpec(
             names=('account',),
             description='Show local account runtime status or configured account profiles.',
             handler=_handle_account,
@@ -193,6 +198,26 @@ def get_slash_command_specs() -> tuple[SlashCommandSpec, ...]:
             names=('tasks', 'todo'),
             description='Show the local runtime task list, optionally filtered by status.',
             handler=_handle_tasks,
+        ),
+        SlashCommandSpec(
+            names=('workflows',),
+            description='List local workflows discovered from workflow manifests.',
+            handler=_handle_workflows,
+        ),
+        SlashCommandSpec(
+            names=('workflow',),
+            description='Show or run one local workflow by name.',
+            handler=_handle_workflow,
+        ),
+        SlashCommandSpec(
+            names=('triggers',),
+            description='List local remote triggers discovered from remote trigger manifests.',
+            handler=_handle_triggers,
+        ),
+        SlashCommandSpec(
+            names=('trigger',),
+            description='Show or run one local remote trigger by id.',
+            handler=_handle_trigger,
         ),
         SlashCommandSpec(
             names=('teams',),
@@ -349,6 +374,32 @@ def _handle_remote(agent: 'LocalCodingAgent', args: str, input_text: str) -> Sla
     return _local_result(input_text, agent.render_remote_report(target))
 
 
+def _handle_worktree(agent: 'LocalCodingAgent', args: str, input_text: str) -> SlashCommandResult:
+    command = args.strip()
+    if not command:
+        return _local_result(input_text, agent.render_worktree_report())
+    if command == 'history':
+        return _local_result(input_text, agent.render_worktree_history_report())
+    if command.startswith('enter'):
+        name = command.split(' ', 1)[1].strip() if ' ' in command else None
+        return _local_result(input_text, agent.render_worktree_enter_report(name or None))
+    if command.startswith('exit'):
+        parts = command.split()
+        action = parts[1] if len(parts) > 1 else 'keep'
+        discard_changes = any(part in {'discard', 'discard_changes=true'} for part in parts[2:])
+        return _local_result(
+            input_text,
+            agent.render_worktree_exit_report(
+                action=action,
+                discard_changes=discard_changes,
+            ),
+        )
+    return _local_result(
+        input_text,
+        'Usage: /worktree [history|enter <name>|exit <keep|remove> [discard]]',
+    )
+
+
 def _handle_account(agent: 'LocalCodingAgent', args: str, input_text: str) -> SlashCommandResult:
     command = args.strip()
     if not command:
@@ -456,6 +507,43 @@ def _handle_resource(agent: 'LocalCodingAgent', args: str, input_text: str) -> S
 def _handle_tasks(agent: 'LocalCodingAgent', args: str, input_text: str) -> SlashCommandResult:
     status = args or None
     return _local_result(input_text, agent.render_tasks_report(status))
+
+
+def _handle_workflows(agent: 'LocalCodingAgent', args: str, input_text: str) -> SlashCommandResult:
+    query = args or None
+    return _local_result(input_text, agent.render_workflows_report(query))
+
+
+def _handle_workflow(agent: 'LocalCodingAgent', args: str, input_text: str) -> SlashCommandResult:
+    command = args.strip()
+    if not command:
+        return _local_result(input_text, 'Usage: /workflow <name> | /workflow run <name>')
+    if command.startswith('run '):
+        workflow_name = command.split(' ', 1)[1].strip()
+        if not workflow_name:
+            return _local_result(input_text, 'Usage: /workflow run <name>')
+        return _local_result(input_text, agent.render_workflow_run_report(workflow_name))
+    return _local_result(input_text, agent.render_workflow_report(command))
+
+
+def _handle_triggers(agent: 'LocalCodingAgent', args: str, input_text: str) -> SlashCommandResult:
+    query = args or None
+    return _local_result(input_text, agent.render_remote_triggers_report(query))
+
+
+def _handle_trigger(agent: 'LocalCodingAgent', args: str, input_text: str) -> SlashCommandResult:
+    command = args.strip()
+    if not command:
+        return _local_result(input_text, 'Usage: /trigger <id> | /trigger run <id>')
+    if command.startswith('run '):
+        trigger_id = command.split(' ', 1)[1].strip()
+        if not trigger_id:
+            return _local_result(input_text, 'Usage: /trigger run <id>')
+        return _local_result(
+            input_text,
+            agent.render_remote_trigger_action_report('run', trigger_id=trigger_id),
+        )
+    return _local_result(input_text, agent.render_remote_trigger_report(command))
 
 
 def _handle_teams(agent: 'LocalCodingAgent', args: str, input_text: str) -> SlashCommandResult:

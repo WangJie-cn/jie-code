@@ -336,6 +336,13 @@ Done:
 - [x] `team_delete`
 - [x] `send_message`
 - [x] `team_messages`
+- [x] `workflow_list`
+- [x] `workflow_get`
+- [x] `workflow_run`
+- [x] `remote_trigger`
+- [x] `worktree_status`
+- [x] `worktree_enter`
+- [x] `worktree_exit`
 
 Missing:
 
@@ -348,11 +355,11 @@ Missing:
 - [ ] Config tool
 - [ ] Terminal capture tool
 - [ ] Browser tool
-- [ ] Workflow tool
-- [ ] Remote trigger tool
+- [x] Workflow tool
+- [x] Remote trigger tool
 - [ ] Sleep / cron tools beyond the current local `sleep` tool
 - [ ] PowerShell tool parity
-- [ ] Worktree enter/exit tools
+- [x] Worktree enter/exit tools
 - [ ] Full `tools.ts` parity
 
 ## 7. Commands And Task Systems
@@ -370,6 +377,9 @@ Done:
 - [x] Local background task management for agent worker sessions
 - [x] Local ask-user runtime with queued answers, history, and slash/CLI inspection flows
 - [x] Local team runtime with persisted teams, messages, and slash/CLI inspection flows
+- [x] Local workflow runtime with manifest discovery, run history, and workflow CLI/slash flows
+- [x] Local remote trigger runtime with create/update/run flows and trigger CLI/slash flows
+- [x] Local managed git worktree runtime with session cwd switching and worktree CLI/slash flows
 
 Missing:
 
