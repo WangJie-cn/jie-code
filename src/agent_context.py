@@ -17,9 +17,12 @@ from .mcp_runtime import MCPRuntime
 from .plan_runtime import PlanRuntime
 from .plugin_runtime import PluginRuntime
 from .remote_runtime import RemoteRuntime
+from .remote_trigger_runtime import RemoteTriggerRuntime
 from .search_runtime import SearchRuntime
 from .task_runtime import TaskRuntime
 from .team_runtime import TeamRuntime
+from .workflow_runtime import WorkflowRuntime
+from .worktree_runtime import WorktreeRuntime
 from .agent_types import AgentRuntimeConfig
 
 MAX_STATUS_CHARS = 2000
@@ -233,6 +236,12 @@ def _get_user_context_cached(
     remote_runtime = RemoteRuntime.from_workspace(Path(cwd), additional_working_directories)
     if remote_runtime.has_remote_config():
         context['remoteRuntime'] = remote_runtime.render_summary()
+    remote_trigger_runtime = RemoteTriggerRuntime.from_workspace(
+        Path(cwd),
+        additional_working_directories,
+    )
+    if remote_trigger_runtime.has_state():
+        context['remoteTriggerRuntime'] = remote_trigger_runtime.render_summary()
     search_runtime = SearchRuntime.from_workspace(Path(cwd), additional_working_directories)
     if search_runtime.has_search_runtime():
         context['searchRuntime'] = search_runtime.render_summary()
@@ -254,6 +263,12 @@ def _get_user_context_cached(
     team_runtime = TeamRuntime.from_workspace(Path(cwd), additional_working_directories)
     if team_runtime.has_team_state():
         context['teamRuntime'] = team_runtime.render_summary()
+    workflow_runtime = WorkflowRuntime.from_workspace(Path(cwd), additional_working_directories)
+    if workflow_runtime.has_workflows():
+        context['workflowRuntime'] = workflow_runtime.render_summary()
+    worktree_runtime = WorktreeRuntime.from_workspace(Path(cwd))
+    if worktree_runtime.repo_root is not None or worktree_runtime.has_state():
+        context['worktreeRuntime'] = worktree_runtime.render_summary()
     return context
 
 

@@ -224,6 +224,41 @@ class AgentSlashCommandTests(unittest.TestCase):
         self.assertIn('profile=staging', ssh_result.final_output)
         self.assertIn('connected=False', disconnect_result.final_output)
 
+    def test_workflow_and_trigger_commands_render_local_reports(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workspace = Path(tmp_dir)
+            (workspace / '.claw-workflows.json').write_text(
+                (
+                    '{"workflows":['
+                    '{"name":"review","description":"Review changes.","steps":["Inspect diff","Summarize findings"]}'
+                    ']}'
+                ),
+                encoding='utf-8',
+            )
+            (workspace / '.claw-triggers.json').write_text(
+                (
+                    '{"triggers":['
+                    '{"trigger_id":"nightly","name":"Nightly","workflow":"review","schedule":"0 0 * * *"}'
+                    ']}'
+                ),
+                encoding='utf-8',
+            )
+            agent = LocalCodingAgent(
+                model_config=ModelConfig(model='Qwen/Qwen3-Coder-30B-A3B-Instruct'),
+                runtime_config=AgentRuntimeConfig(cwd=workspace),
+            )
+            workflows_result = agent.run('/workflows')
+            workflow_result = agent.run('/workflow review')
+            trigger_result = agent.run('/trigger nightly')
+            trigger_run_result = agent.run('/trigger run nightly')
+        self.assertIn('# Workflows', workflows_result.final_output)
+        self.assertIn('review', workflows_result.final_output)
+        self.assertIn('# Workflow', workflow_result.final_output)
+        self.assertIn('Review changes', workflow_result.final_output)
+        self.assertIn('# Remote Trigger', trigger_result.final_output)
+        self.assertIn('trigger_id=nightly', trigger_result.final_output)
+        self.assertIn('# Remote Trigger Run', trigger_run_result.final_output)
+
     def test_account_commands_render_and_update_local_account_runtime(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             workspace = Path(tmp_dir)

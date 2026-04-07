@@ -37,8 +37,12 @@ from .remote_runtime import (
     run_ssh_mode,
     run_teleport_mode,
 )
+from .remote_trigger_runtime import RemoteTriggerRuntime
 from .search_runtime import SearchRuntime
 from .team_runtime import TeamRuntime
+from .task_runtime import TaskRuntime
+from .workflow_runtime import WorkflowRuntime
+from .worktree_runtime import WorktreeRuntime
 from .runtime import PortRuntime
 from .session_store import (
     StoredAgentSession,
@@ -603,6 +607,15 @@ def build_parser() -> argparse.ArgumentParser:
     remote_profiles_parser.add_argument('--query')
     remote_disconnect_parser = subparsers.add_parser('remote-disconnect', help='disconnect the active local remote target')
     remote_disconnect_parser.add_argument('--cwd', default='.')
+    worktree_status_parser = subparsers.add_parser('worktree-status', help='show local managed git worktree status')
+    worktree_status_parser.add_argument('--cwd', default='.')
+    worktree_enter_parser = subparsers.add_parser('worktree-enter', help='create and enter a managed git worktree')
+    worktree_enter_parser.add_argument('name', nargs='?')
+    worktree_enter_parser.add_argument('--cwd', default='.')
+    worktree_exit_parser = subparsers.add_parser('worktree-exit', help='exit the active managed git worktree')
+    worktree_exit_parser.add_argument('--action', default='keep')
+    worktree_exit_parser.add_argument('--discard-changes', action='store_true')
+    worktree_exit_parser.add_argument('--cwd', default='.')
     account_status_parser = subparsers.add_parser('account-status', help='show local account runtime status')
     account_status_parser.add_argument('--cwd', default='.')
     account_profiles_parser = subparsers.add_parser('account-profiles', help='list configured local account profiles')
@@ -667,6 +680,33 @@ def build_parser() -> argparse.ArgumentParser:
     config_set_parser.add_argument('value_json')
     config_set_parser.add_argument('--source', default='local')
     config_set_parser.add_argument('--cwd', default='.')
+    workflow_list_parser = subparsers.add_parser('workflow-list', help='list local workflow definitions')
+    workflow_list_parser.add_argument('--cwd', default='.')
+    workflow_list_parser.add_argument('--query')
+    workflow_get_parser = subparsers.add_parser('workflow-get', help='show one local workflow definition')
+    workflow_get_parser.add_argument('workflow_name')
+    workflow_get_parser.add_argument('--cwd', default='.')
+    workflow_run_parser = subparsers.add_parser('workflow-run', help='record and render a local workflow run')
+    workflow_run_parser.add_argument('workflow_name')
+    workflow_run_parser.add_argument('--arguments-json', default='{}')
+    workflow_run_parser.add_argument('--cwd', default='.')
+    trigger_list_parser = subparsers.add_parser('trigger-list', help='list local remote triggers')
+    trigger_list_parser.add_argument('--cwd', default='.')
+    trigger_list_parser.add_argument('--query')
+    trigger_get_parser = subparsers.add_parser('trigger-get', help='show one local remote trigger')
+    trigger_get_parser.add_argument('trigger_id')
+    trigger_get_parser.add_argument('--cwd', default='.')
+    trigger_create_parser = subparsers.add_parser('trigger-create', help='create a local remote trigger')
+    trigger_create_parser.add_argument('--body-json', required=True)
+    trigger_create_parser.add_argument('--cwd', default='.')
+    trigger_update_parser = subparsers.add_parser('trigger-update', help='update a local remote trigger')
+    trigger_update_parser.add_argument('trigger_id')
+    trigger_update_parser.add_argument('--body-json', required=True)
+    trigger_update_parser.add_argument('--cwd', default='.')
+    trigger_run_parser = subparsers.add_parser('trigger-run', help='run a local remote trigger')
+    trigger_run_parser.add_argument('trigger_id')
+    trigger_run_parser.add_argument('--body-json', default='{}')
+    trigger_run_parser.add_argument('--cwd', default='.')
     teams_status_parser = subparsers.add_parser('team-status', help='show local collaboration team runtime summary')
     teams_status_parser.add_argument('--cwd', default='.')
     teams_list_parser = subparsers.add_parser('team-list', help='list local collaboration teams')
@@ -906,6 +946,33 @@ def main(argv: list[str] | None = None) -> int:
         runtime = RemoteRuntime.from_workspace(Path(args.cwd).resolve())
         print(runtime.disconnect().as_text())
         return 0
+    if args.command == 'worktree-status':
+        runtime = WorktreeRuntime.from_workspace(Path(args.cwd).resolve())
+        print('# Worktree')
+        print()
+        print(runtime.render_summary())
+        return 0
+    if args.command == 'worktree-enter':
+        runtime = WorktreeRuntime.from_workspace(Path(args.cwd).resolve())
+        try:
+            print(runtime.enter(name=args.name).as_text())
+        except (RuntimeError, ValueError) as exc:
+            print(exc)
+            return 1
+        return 0
+    if args.command == 'worktree-exit':
+        runtime = WorktreeRuntime.from_workspace(Path(args.cwd).resolve())
+        try:
+            print(
+                runtime.exit(
+                    action=args.action,
+                    discard_changes=args.discard_changes,
+                ).as_text()
+            )
+        except (RuntimeError, ValueError) as exc:
+            print(exc)
+            return 1
+        return 0
     if args.command == 'account-status':
         runtime = AccountRuntime.from_workspace(Path(args.cwd).resolve())
         print('# Account')
@@ -1037,6 +1104,80 @@ def main(argv: list[str] | None = None) -> int:
         print(f'store_path={mutation.store_path}')
         print(f'effective_key_count={mutation.effective_key_count}')
         print(runtime.render_value(args.key_path))
+        return 0
+    if args.command == 'workflow-list':
+        runtime = WorkflowRuntime.from_workspace(Path(args.cwd).resolve())
+        print(runtime.render_workflows_index(query=args.query))
+        return 0
+    if args.command == 'workflow-get':
+        runtime = WorkflowRuntime.from_workspace(Path(args.cwd).resolve())
+        try:
+            print(runtime.render_workflow(args.workflow_name))
+        except KeyError:
+            print(f'Unknown workflow: {args.workflow_name}')
+            return 1
+        return 0
+    if args.command == 'workflow-run':
+        runtime = WorkflowRuntime.from_workspace(Path(args.cwd).resolve())
+        arguments = json.loads(args.arguments_json)
+        if not isinstance(arguments, dict):
+            print('arguments-json must decode to a JSON object')
+            return 1
+        try:
+            print(runtime.render_run_report(args.workflow_name, arguments=arguments))
+        except KeyError:
+            print(f'Unknown workflow: {args.workflow_name}')
+            return 1
+        return 0
+    if args.command == 'trigger-list':
+        runtime = RemoteTriggerRuntime.from_workspace(Path(args.cwd).resolve())
+        print(runtime.render_trigger_index(query=args.query))
+        return 0
+    if args.command == 'trigger-get':
+        runtime = RemoteTriggerRuntime.from_workspace(Path(args.cwd).resolve())
+        try:
+            print(runtime.render_trigger(args.trigger_id))
+        except KeyError:
+            print(f'Unknown remote trigger: {args.trigger_id}')
+            return 1
+        return 0
+    if args.command == 'trigger-create':
+        runtime = RemoteTriggerRuntime.from_workspace(Path(args.cwd).resolve())
+        body = json.loads(args.body_json)
+        if not isinstance(body, dict):
+            print('body-json must decode to a JSON object')
+            return 1
+        try:
+            trigger = runtime.create_trigger(body)
+        except (KeyError, TypeError, ValueError) as exc:
+            print(exc)
+            return 1
+        print(runtime.render_trigger(trigger.trigger_id))
+        return 0
+    if args.command == 'trigger-update':
+        runtime = RemoteTriggerRuntime.from_workspace(Path(args.cwd).resolve())
+        body = json.loads(args.body_json)
+        if not isinstance(body, dict):
+            print('body-json must decode to a JSON object')
+            return 1
+        try:
+            trigger = runtime.update_trigger(args.trigger_id, body)
+        except (KeyError, TypeError, ValueError) as exc:
+            print(exc)
+            return 1
+        print(runtime.render_trigger(trigger.trigger_id))
+        return 0
+    if args.command == 'trigger-run':
+        runtime = RemoteTriggerRuntime.from_workspace(Path(args.cwd).resolve())
+        body = json.loads(args.body_json)
+        if not isinstance(body, dict):
+            print('body-json must decode to a JSON object')
+            return 1
+        try:
+            print(runtime.render_run_report(args.trigger_id, body=body))
+        except KeyError:
+            print(f'Unknown remote trigger: {args.trigger_id}')
+            return 1
         return 0
     if args.command == 'team-status':
         runtime = TeamRuntime.from_workspace(Path(args.cwd).resolve())

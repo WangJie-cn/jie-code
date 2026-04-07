@@ -49,6 +49,9 @@
 | 🆕 | **Ask-User Runtime** | Queued or interactive local ask-user flow with history, slash commands, and agent tool support |
 | 🆕 | **Team Runtime** | Persisted local teams and message history with team/message tools and slash/CLI inspection |
 | 🆕 | **Notebook Edit Tool** | Native `.ipynb` cell editing through the real agent tool registry |
+| 🆕 | **Workflow Runtime** | Manifest-backed local workflows with workflow tools, slash commands, and run history |
+| 🆕 | **Remote Trigger Runtime** | Local remote triggers with create/update/run flows similar to the npm remote trigger surface |
+| 🆕 | **Worktree Runtime** | Managed git worktrees with mid-session cwd switching, slash commands, and CLI flows |
 | 🆕 | **Tokenizer-Aware Context** | Cached tokenizer backends with heuristic fallback for `/context`, `/status`, and compaction |
 | 🆕 | **Daemon Commands** | Local `daemon start/ps/logs/attach/kill` wrapper over background agent sessions |
 | 🆕 | **Background Sessions** | Local `agent-bg`, `agent-ps`, `agent-logs`, `agent-attach`, and `agent-kill` flows |
@@ -92,6 +95,9 @@ Built on the public porting workspace from [instructkr/claw-code](https://github
 | 🙋 **Ask-User Runtime** | Queued answer or interactive user-question flow with history tracking |
 | 👥 **Team Runtime** | Persisted local teams plus message history, handoff notes, and collaboration metadata |
 | 📓 **Notebook Editing** | Native Jupyter notebook cell editing through `notebook_edit` |
+| 🪵 **Worktree Runtime** | Managed git worktrees with `worktree_enter`, `worktree_exit`, and live cwd switching |
+| 🧭 **Workflow Runtime** | Manifest-backed workflows with slash commands, CLI inspection, and recorded runs |
+| ⏰ **Remote Triggers** | Local remote triggers with create/update/run flows and npm-style trigger actions |
 | 🪝 **Hook & Policy Runtime** | Trust reporting, safe env, managed settings, tool blocking, and budget overrides |
 | 🧠 **Context Engine** | Automatic context building with CLAUDE.md discovery, compaction, and snipping |
 | 🔢 **Tokenizer-Aware Accounting** | Model-aware token counting with cached tokenizer backends and fallback heuristics |
@@ -149,6 +155,9 @@ Built on the public porting workspace from [instructkr/claw-code](https://github
 - [x] Local MCP runtime: manifest resources, stdio transport, MCP resources, and MCP tool calls
 - [x] Local task and plan runtimes with plan sync and dependency-aware task execution
 - [x] Notebook edit tool in the real Python tool registry
+- [x] Local workflow runtime with workflow list/get/run tools and CLI/slash flows
+- [x] Local remote trigger runtime with create/update/run flows and CLI/slash inspection
+- [x] Local managed git worktree runtime with live cwd switching and worktree CLI/slash flows
 - [x] Tokenizer-aware context accounting with cached tokenizer backends and heuristic fallback
 - [x] Plugin runtime: manifest discovery, hooks, aliases, virtual tools, tool blocking
 - [x] Plugin lifecycle hooks: resume, persist, delegate phases
@@ -212,6 +221,9 @@ claw-code/
 │   ├── task_runtime.py           # Persistent task runtime and task execution
 │   ├── task.py                   # Task state model and task dataclasses
 │   ├── team_runtime.py           # Local teams, messages, and collaboration metadata
+│   ├── workflow_runtime.py       # Local workflow manifests and recorded workflow runs
+│   ├── remote_trigger_runtime.py # Local remote trigger manifests and trigger run history
+│   ├── worktree_runtime.py       # Managed git worktree sessions and cwd switching
 │   ├── hook_policy.py            # Hook/policy manifests, trust, and safe env handling
 │   ├── tokenizer_runtime.py      # Tokenizer-aware context accounting backends
 │   ├── permissions.py            # Tool permission filtering

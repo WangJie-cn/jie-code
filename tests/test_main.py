@@ -154,6 +154,28 @@ class MainCliTests(unittest.TestCase):
         self.assertEqual(args.provider, 'local-search')
         self.assertEqual(args.cwd, '.')
 
+    def test_parser_accepts_worktree_runtime_commands(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(['worktree-exit', '--action', 'remove', '--discard-changes', '--cwd', '.'])
+        self.assertEqual(args.command, 'worktree-exit')
+        self.assertEqual(args.action, 'remove')
+        self.assertTrue(args.discard_changes)
+        self.assertEqual(args.cwd, '.')
+
+    def test_parser_accepts_workflow_runtime_commands(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(['workflow-run', 'review', '--arguments-json', '{"path":"src"}', '--cwd', '.'])
+        self.assertEqual(args.command, 'workflow-run')
+        self.assertEqual(args.workflow_name, 'review')
+        self.assertEqual(args.cwd, '.')
+
+    def test_parser_accepts_remote_trigger_runtime_commands(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(['trigger-run', 'nightly', '--body-json', '{"depth":"quick"}', '--cwd', '.'])
+        self.assertEqual(args.command, 'trigger-run')
+        self.assertEqual(args.trigger_id, 'nightly')
+        self.assertEqual(args.cwd, '.')
+
     def test_parser_accepts_mcp_runtime_commands(self) -> None:
         parser = build_parser()
         args = parser.parse_args(['mcp-tools', '--cwd', '.', '--server', 'remote'])

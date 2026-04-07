@@ -24,6 +24,7 @@ from .plan_runtime import PlanRuntime, PlanStep
 from .plugin_runtime import PluginRuntime
 from .port_manifest import PortManifest, build_port_manifest
 from .query_engine import QueryEnginePort, TurnResult
+from .remote_trigger_runtime import RemoteTriggerDefinition, RemoteTriggerRunRecord, RemoteTriggerRuntime
 from .runtime import PortRuntime, RuntimeSession
 from .search_runtime import SearchProviderProfile, SearchResult, SearchRuntime, SearchStatusReport
 from .session_store import StoredSession, load_session, save_session
@@ -32,6 +33,8 @@ from .task import PortingTask
 from .task_runtime import TaskRuntime
 from .team_runtime import TeamDefinition, TeamMessage, TeamRuntime
 from .tokenizer_runtime import TokenCounterInfo, clear_token_counter_cache, count_tokens, describe_token_counter
+from .workflow_runtime import WorkflowDefinition, WorkflowRunRecord, WorkflowRuntime
+from .worktree_runtime import WorktreeRuntime, WorktreeSessionState, WorktreeStatusReport
 from .tools import PORTED_TOOLS, build_tool_backlog
 
 __all__ = [
@@ -66,6 +69,9 @@ __all__ = [
     'PortingTask',
     'QueuedUserAnswer',
     'QueryEnginePort',
+    'RemoteTriggerDefinition',
+    'RemoteTriggerRunRecord',
+    'RemoteTriggerRuntime',
     'RuntimeSession',
     'SearchProviderProfile',
     'SearchResult',
@@ -78,6 +84,12 @@ __all__ = [
     'TeamRuntime',
     'TokenCounterInfo',
     'TurnResult',
+    'WorkflowDefinition',
+    'WorkflowRunRecord',
+    'WorkflowRuntime',
+    'WorktreeRuntime',
+    'WorktreeSessionState',
+    'WorktreeStatusReport',
     'PORTED_COMMANDS',
     'PORTED_TOOLS',
     'build_command_backlog',
