@@ -1,6 +1,7 @@
 """Python porting workspace for the Claude Code rewrite effort."""
 
 from .account_runtime import AccountRuntime, AccountProfile, AccountSessionState, AccountStatusReport
+from .ask_user_runtime import AskUserRuntime, AskUserResponse, QueuedUserAnswer
 from .agent_context import (
     AgentContextSnapshot,
     build_context_snapshot,
@@ -29,6 +30,7 @@ from .session_store import StoredSession, load_session, save_session
 from .system_init import build_system_init_message
 from .task import PortingTask
 from .task_runtime import TaskRuntime
+from .team_runtime import TeamDefinition, TeamMessage, TeamRuntime
 from .tokenizer_runtime import TokenCounterInfo, clear_token_counter_cache, count_tokens, describe_token_counter
 from .tools import PORTED_TOOLS, build_tool_backlog
 
@@ -42,6 +44,8 @@ __all__ = [
     'AccountRuntime',
     'AccountSessionState',
     'AccountStatusReport',
+    'AskUserResponse',
+    'AskUserRuntime',
     'AgentMessage',
     'AgentSessionState',
     'BackgroundSessionRuntime',
@@ -60,6 +64,7 @@ __all__ = [
     'PortRuntime',
     'PluginRuntime',
     'PortingTask',
+    'QueuedUserAnswer',
     'QueryEnginePort',
     'RuntimeSession',
     'SearchProviderProfile',
@@ -68,6 +73,9 @@ __all__ = [
     'SearchStatusReport',
     'StoredSession',
     'TaskRuntime',
+    'TeamDefinition',
+    'TeamMessage',
+    'TeamRuntime',
     'TokenCounterInfo',
     'TurnResult',
     'PORTED_COMMANDS',

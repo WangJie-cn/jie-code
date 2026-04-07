@@ -95,9 +95,11 @@ def build_system_prompt_parts(
         get_remote_guidance_section(prompt_context),
         get_search_guidance_section(prompt_context),
         get_account_guidance_section(prompt_context),
+        get_ask_user_guidance_section(prompt_context),
         get_config_guidance_section(prompt_context),
         get_plan_guidance_section(prompt_context),
         get_task_guidance_section(prompt_context),
+        get_team_guidance_section(prompt_context),
         get_hook_policy_guidance_section(prompt_context),
         get_tone_and_style_section(),
         get_output_efficiency_section(),
@@ -277,6 +279,18 @@ def get_account_guidance_section(prompt_context: PromptContext) -> str:
     return '\n'.join(['# Account', *prepend_bullets(items)])
 
 
+def get_ask_user_guidance_section(prompt_context: PromptContext) -> str:
+    ask_user_runtime = prompt_context.user_context.get('askUserRuntime')
+    if not ask_user_runtime:
+        return ''
+    items = [
+        'A local ask-user runtime may be available with queued answers or optional interactive prompting.',
+        'Use ask_user_question when you genuinely need a user decision or clarification that should not be guessed.',
+        'If ask_user_question reports that no queued answer is available, explain the limitation or ask the human user directly outside the tool loop.',
+    ]
+    return '\n'.join(['# Ask User', *prepend_bullets(items)])
+
+
 def get_config_guidance_section(prompt_context: PromptContext) -> str:
     config_runtime = prompt_context.user_context.get('configRuntime')
     if not config_runtime:
@@ -300,6 +314,18 @@ def get_task_guidance_section(prompt_context: PromptContext) -> str:
         'Use task_next and the richer task state tools when dependencies or blocked work matter.',
     ]
     return '\n'.join(['# Tasks', *prepend_bullets(items)])
+
+
+def get_team_guidance_section(prompt_context: PromptContext) -> str:
+    team_runtime = prompt_context.user_context.get('teamRuntime')
+    if not team_runtime:
+        return ''
+    items = [
+        'A local collaboration team runtime may be available with persisted teams and message history.',
+        'Use the team tools when the task needs local team state, simple collaboration metadata, or persisted teammate messages.',
+        'Use send_message to record a concrete handoff or note to a team instead of burying it in free-form assistant text.',
+    ]
+    return '\n'.join(['# Teams', *prepend_bullets(items)])
 
 
 def get_plan_guidance_section(prompt_context: PromptContext) -> str:

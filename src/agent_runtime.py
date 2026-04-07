@@ -12,6 +12,7 @@ from .agent_manager import AgentManager
 from .agent_context import clear_context_caches
 from .agent_context import render_context_report as render_agent_context_report
 from .agent_context_usage import collect_context_usage, estimate_tokens, format_context_usage
+from .ask_user_runtime import AskUserRuntime
 from .config_runtime import ConfigRuntime
 from .hook_policy import HookPolicyRuntime
 from .mcp_runtime import MCPRuntime
@@ -48,6 +49,7 @@ from .plugin_runtime import PluginRuntime
 from .remote_runtime import RemoteRuntime
 from .search_runtime import SearchRuntime
 from .task_runtime import TaskRuntime
+from .team_runtime import TeamRuntime
 from .tokenizer_runtime import describe_token_counter
 from .session_store import (
     StoredAgentSession,
@@ -84,9 +86,11 @@ class LocalCodingAgent:
     remote_runtime: RemoteRuntime | None = None
     search_runtime: SearchRuntime | None = None
     account_runtime: AccountRuntime | None = None
+    ask_user_runtime: AskUserRuntime | None = None
     config_runtime: ConfigRuntime | None = None
     plan_runtime: PlanRuntime | None = None
     task_runtime: TaskRuntime | None = None
+    team_runtime: TeamRuntime | None = None
     last_session: AgentSessionState | None = field(default=None, init=False, repr=False)
     last_run_result: AgentRunResult | None = field(default=None, init=False, repr=False)
     active_session_id: str | None = field(default=None, init=False, repr=False)
@@ -129,12 +133,22 @@ class LocalCodingAgent:
                 self.runtime_config.cwd,
                 tuple(str(path) for path in self.runtime_config.additional_working_directories),
             )
+        if self.ask_user_runtime is None:
+            self.ask_user_runtime = AskUserRuntime.from_workspace(
+                self.runtime_config.cwd,
+                tuple(str(path) for path in self.runtime_config.additional_working_directories),
+            )
         if self.config_runtime is None:
             self.config_runtime = ConfigRuntime.from_workspace(self.runtime_config.cwd)
         if self.plan_runtime is None:
             self.plan_runtime = PlanRuntime.from_workspace(self.runtime_config.cwd)
         if self.task_runtime is None:
             self.task_runtime = TaskRuntime.from_workspace(self.runtime_config.cwd)
+        if self.team_runtime is None:
+            self.team_runtime = TeamRuntime.from_workspace(
+                self.runtime_config.cwd,
+                tuple(str(path) for path in self.runtime_config.additional_working_directories),
+            )
         self.runtime_config = self._apply_hook_policy_budget_overrides(self.runtime_config)
         registry = dict(self.tool_registry)
         plugin_tools = self.plugin_runtime.register_tool_aliases(registry)
@@ -155,11 +169,13 @@ class LocalCodingAgent:
             ),
             search_runtime=self.search_runtime,
             account_runtime=self.account_runtime,
+            ask_user_runtime=self.ask_user_runtime,
             config_runtime=self.config_runtime,
             mcp_runtime=self.mcp_runtime,
             remote_runtime=self.remote_runtime,
             plan_runtime=self.plan_runtime,
             task_runtime=self.task_runtime,
+            team_runtime=self.team_runtime,
         )
 
     def set_model(self, model: str) -> None:
@@ -3063,6 +3079,37 @@ class LocalCodingAgent:
             return '# Task\n\nNo local task runtime is available.'
         return self.task_runtime.render_task(task_id)
 
+    def render_ask_user_report(self) -> str:
+        if self.ask_user_runtime is None:
+            return '# Ask User\n\nNo local ask-user runtime is available.'
+        return '\n'.join(['# Ask User', '', self.ask_user_runtime.render_summary()])
+
+    def render_ask_user_history_report(self) -> str:
+        if self.ask_user_runtime is None:
+            return '# Ask User History\n\nNo local ask-user runtime is available.'
+        return self.ask_user_runtime.render_history()
+
+    def render_teams_report(self, query: str | None = None) -> str:
+        if self.team_runtime is None:
+            return '# Teams\n\nNo local team runtime is available.'
+        return self.team_runtime.render_teams_index(query=query)
+
+    def render_team_report(self, team_name: str) -> str:
+        if self.team_runtime is None:
+            return '# Team\n\nNo local team runtime is available.'
+        try:
+            return self.team_runtime.render_team(team_name)
+        except KeyError:
+            return f'# Team\n\nUnknown team: {team_name}'
+
+    def render_team_messages_report(self, team_name: str | None = None) -> str:
+        if self.team_runtime is None:
+            return '# Team Messages\n\nNo local team runtime is available.'
+        try:
+            return self.team_runtime.render_messages(team_name=team_name)
+        except KeyError:
+            return f'# Team Messages\n\nUnknown team: {team_name}'
+
     def render_hook_policy_report(self) -> str:
         if self.hook_policy_runtime is None:
             return '# Hook Policy\n\nNo local hook or policy manifests discovered.'
@@ -3131,6 +3178,9 @@ class LocalCodingAgent:
                 lines.append(
                     f'- Active account: {session.provider} -> {session.identity}'
                 )
+        if self.ask_user_runtime is not None and self.ask_user_runtime.has_state():
+            lines.append(f'- Ask-user queued answers: {len(self.ask_user_runtime.queued_answers)}')
+            lines.append(f'- Ask-user history: {len(self.ask_user_runtime.history)}')
         if self.config_runtime is not None and self.config_runtime.has_config():
             lines.append(f'- Config sources: {len(self.config_runtime.sources)}')
             lines.append(
@@ -3140,6 +3190,9 @@ class LocalCodingAgent:
             lines.append(f'- Local plan steps: {len(self.plan_runtime.steps)}')
         if self.task_runtime is not None and self.task_runtime.tasks:
             lines.append(f'- Local tasks: {len(self.task_runtime.tasks)}')
+        if self.team_runtime is not None and self.team_runtime.has_team_state():
+            lines.append(f'- Local teams: {len(self.team_runtime.teams)}')
+            lines.append(f'- Team messages: {len(self.team_runtime.messages)}')
         if self.last_session_path is not None:
             lines.append(f'- Session path: {self.last_session_path}')
         if self.last_run_result is not None:
@@ -3198,6 +3251,10 @@ class LocalCodingAgent:
             'account_login',
             'account_logout',
             'config_set',
+            'ask_user_question',
+            'team_create',
+            'team_delete',
+            'send_message',
         }
         if tool_name not in refresh_tool_names:
             return
@@ -3220,21 +3277,33 @@ class LocalCodingAgent:
                 self.runtime_config.cwd,
                 additional_working_directories=additional_dirs,
             )
+        if tool_name == 'ask_user_question':
+            self.ask_user_runtime = AskUserRuntime.from_workspace(
+                self.runtime_config.cwd,
+                additional_working_directories=additional_dirs,
+            )
         if tool_name == 'config_set':
             self.config_runtime = ConfigRuntime.from_workspace(self.runtime_config.cwd)
         if tool_name.startswith('task_') or tool_name == 'todo_write':
             self.task_runtime = TaskRuntime.from_workspace(self.runtime_config.cwd)
         if tool_name.startswith('plan_') or tool_name == 'update_plan':
             self.plan_runtime = PlanRuntime.from_workspace(self.runtime_config.cwd)
+        if tool_name.startswith('team_') or tool_name == 'send_message':
+            self.team_runtime = TeamRuntime.from_workspace(
+                self.runtime_config.cwd,
+                additional_working_directories=additional_dirs,
+            )
         self.tool_context = replace(
             self.tool_context,
             tool_registry=self.tool_registry,
             search_runtime=self.search_runtime,
             account_runtime=self.account_runtime,
+            ask_user_runtime=self.ask_user_runtime,
             config_runtime=self.config_runtime,
             remote_runtime=self.remote_runtime,
             plan_runtime=self.plan_runtime,
             task_runtime=self.task_runtime,
+            team_runtime=self.team_runtime,
         )
 
     def _apply_plugin_before_prompt_hooks(self, prompt: str) -> str:

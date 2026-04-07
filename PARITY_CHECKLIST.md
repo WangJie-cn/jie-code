@@ -299,10 +299,12 @@ Done:
 - [x] `web_search`
 - [x] `tool_search`
 - [x] `sleep`
+- [x] `ask_user_question`
 - [x] `account_status`
 - [x] `account_list_profiles`
 - [x] `account_login`
 - [x] `account_logout`
+- [x] `notebook_edit`
 - [x] `mcp_list_resources`
 - [x] `mcp_read_resource`
 - [x] `mcp_list_tools`
@@ -328,20 +330,22 @@ Done:
 - [x] `task_block`
 - [x] `task_cancel`
 - [x] `todo_write`
+- [x] `team_list`
+- [x] `team_get`
+- [x] `team_create`
+- [x] `team_delete`
+- [x] `send_message`
+- [x] `team_messages`
 
 Missing:
 
 - [ ] Agent spawning tool parity beyond the current `delegate_agent` runtime tool
 - [ ] Skill tool
-- [ ] Notebook edit tool
 - [ ] Web fetch parity beyond the current local text-fetch implementation
 - [ ] Web search parity beyond the current provider-backed implementation
-- [ ] Ask-user-question tool
 - [ ] LSP tool
 - [ ] Tool search parity beyond the current local registry search
 - [ ] Config tool
-- [ ] Team create/delete tools
-- [ ] Send-message tool
 - [ ] Terminal capture tool
 - [ ] Browser tool
 - [ ] Workflow tool
@@ -364,13 +368,15 @@ Done:
 - [x] Local dependency-aware task execution flow with next-task selection and blocked/unblocked state
 - [x] Local remote profile/runtime flow with persisted connect/disconnect state
 - [x] Local background task management for agent worker sessions
+- [x] Local ask-user runtime with queued answers, history, and slash/CLI inspection flows
+- [x] Local team runtime with persisted teams, messages, and slash/CLI inspection flows
 
 Missing:
 
 - [ ] Real implementation of the larger upstream command tree
 - [ ] Task orchestration system beyond the current local dependency-aware task runtime
 - [ ] Planner / task execution parity beyond the current local plan persistence, sync, and next-task flow
-- [ ] Team / collaboration command flows
+- [ ] Team / collaboration command flows beyond the current local team runtime and message recording flows
 - [ ] Command-specific session behaviors
 - [ ] Full `src/commands/*` parity
 - [ ] Full `src/tasks/*` parity
@@ -532,12 +538,8 @@ Mirrored inventory / scaffold areas that still need real implementation work:
 - [ ] `src/tools.py`
 - [ ] `src/query_engine.py`
 - [ ] `src/runtime.py`
-- [ ] `src/services/*`
-- [ ] `src/plugins/*`
-- [ ] `src/remote/*`
-- [ ] `src/voice/*`
-- [ ] `src/vim/*`
-- [ ] Large parts of the rest of the mirrored package tree
+- [ ] Remaining mirrored inventory surfaces still represented mainly by snapshot data under `src/reference_data/*`
+- [ ] Command/task/plugin/skill/service/editor subsystems that exist upstream but do not yet have real Python modules after the tree cleanup
 
 ## 15. High-Priority Next Steps
 
@@ -546,7 +548,6 @@ Mirrored inventory / scaffold areas that still need real implementation work:
 - [ ] Expand MCP parity beyond the current stdio resource/tool transport support
 - [ ] Expand hooks and policy parity beyond the current manifest/runtime implementation
 - [ ] Build a real interactive REPL / TUI
-- [ ] Add tokenizer-accurate context accounting
 - [ ] Expand background session parity beyond the current local worker/log/attach model
 - [ ] Add real remote session transport and shared remote state beyond the current local remote-profile runtime
 - [ ] Port more of the command/task system

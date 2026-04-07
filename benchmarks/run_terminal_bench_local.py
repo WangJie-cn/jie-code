@@ -271,6 +271,7 @@ def build_verifier_exec_command(
     task_dir: Path,
     verifier_logs_dir: Path,
     env: dict[str, str],
+    fakeroot: bool = False,
 ) -> str:
     binds = [
         f"{workspace_dir}:{task.workdir}:rw",
@@ -278,18 +279,35 @@ def build_verifier_exec_command(
         f"{verifier_logs_dir}:/logs/verifier:rw",
     ]
     bind_flags = " ".join(f"--bind {shlex.quote(spec)}" for spec in binds)
+
+    # When using fakeroot (no-sudo HPC), inject env vars needed for apt-get
+    # and SSL inside the container.
+    if fakeroot:
+        fakeroot_env = {
+            "TMPDIR": "/tmp",
+            "DEBIAN_FRONTEND": "noninteractive",
+            "CURL_CA_BUNDLE": "/etc/ssl/certs/ca-certificates.crt",
+            "SSL_CERT_FILE": "/etc/ssl/certs/ca-certificates.crt",
+            "REQUESTS_CA_BUNDLE": "/etc/ssl/certs/ca-certificates.crt",
+        }
+        env = {**fakeroot_env, **env}
+
     env_flags = " ".join(
         f"--env {shlex.quote(key)}={shlex.quote(value)}"
         for key, value in sorted(env.items())
     )
     inner = (
         "set -euo pipefail; "
-        "chmod +x /tests/test.sh; "
+        "chmod +x /tests/test.sh 2>/dev/null || true; "
         f"cd {shlex.quote(task.workdir)}; "
-        "/tests/test.sh > /logs/verifier/test-stdout.txt 2> /logs/verifier/test-stderr.txt"
+        "bash /tests/test.sh > /logs/verifier/test-stdout.txt 2> /logs/verifier/test-stderr.txt"
     )
+    # --fakeroot: simulate root inside the container (for apt-get etc.)
+    # --writable-tmpfs: in-memory overlay so packages can be installed
+    # --contain: prevent host dirs from leaking into container
+    fakeroot_flags = "--fakeroot --writable-tmpfs --contain " if fakeroot else ""
     return (
-        f"apptainer exec --cleanenv {bind_flags} {env_flags} "
+        f"apptainer exec --cleanenv {fakeroot_flags}{bind_flags} {env_flags} "
         f"--cwd {shlex.quote(task.workdir)} {shlex.quote(str(image_path))} "
         f"bash -lc {shlex.quote(inner)}"
     )
@@ -304,6 +322,7 @@ def run_trial(
     force_pull: bool,
     keep_images: bool,
     timeout_multiplier: float,
+    fakeroot: bool = False,
 ) -> LocalTrialResult:
     timestamp = time.strftime("%Y%m%d-%H%M%S")
     trial_dir = jobs_dir / f"{timestamp}_{safe_name(task.short_name)}"
@@ -363,6 +382,7 @@ def run_trial(
         task_dir=task.task_dir,
         verifier_logs_dir=verifier_logs_dir,
         env=verifier_env,
+        fakeroot=fakeroot,
     )
 
     agent_timeout = (task.agent_timeout_sec or 1800.0) * timeout_multiplier
@@ -447,6 +467,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--timeout-multiplier", type=float, default=1.0, help="Multiplier applied to agent and verifier timeouts.")
     parser.add_argument("--output", type=Path, help="Optional JSON file for the run summary.")
     parser.add_argument("--list", action="store_true", help="List discovered tasks and exit.")
+    parser.add_argument(
+        "--fakeroot",
+        action="store_true",
+        help="Use Apptainer --fakeroot + --writable-tmpfs for the verifier container. "
+        "Required on HPC systems without sudo where test.sh scripts need apt-get.",
+    )
     return parser
 
 
@@ -481,6 +507,8 @@ def main() -> None:
     print("=" * 80)
     print(f"  Tasks:    {len(tasks)}")
     print(f"  Jobs dir: {args.jobs_dir}")
+    if args.fakeroot:
+        print("  Fakeroot: enabled (no-sudo HPC mode)")
     print("=" * 80)
     print()
 
@@ -494,6 +522,7 @@ def main() -> None:
             force_pull=args.force_pull,
             keep_images=args.keep_images,
             timeout_multiplier=args.timeout_multiplier,
+            fakeroot=args.fakeroot,
         )
         results.append(result)
         icon = "PASS ✅" if result.passed else ("SKIP ⚪" if result.status == "skipped" else "FAIL ❌")

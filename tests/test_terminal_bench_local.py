@@ -7,6 +7,7 @@ from pathlib import Path
 from benchmarks.run_terminal_bench_local import (
     TerminalBenchTask,
     build_host_agent_command,
+    build_verifier_exec_command,
     discover_tasks,
     filter_tasks,
     parse_dockerfile_workdir,
@@ -128,6 +129,57 @@ docker_image = "example/other:latest"
             self.assertIn(" -m src.main agent ", cmd)
             self.assertIn("instruction=$(cat", cmd)
             self.assertNotIn("claw-code-agent agent", cmd)
+
+    def test_build_verifier_command_fakeroot_adds_flags(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            workspace_dir = root / "workspace"
+            verifier_logs_dir = root / "verifier"
+            task_dir = root / "task"
+            tests_dir = task_dir / "tests"
+            workspace_dir.mkdir()
+            verifier_logs_dir.mkdir()
+            tests_dir.mkdir(parents=True)
+            image_path = root / "image.sif"
+            image_path.write_text("fake", encoding="utf-8")
+            task = TerminalBenchTask(
+                task_dir=task_dir,
+                name="terminal-bench/demo",
+                short_name="demo",
+                instruction="solve it",
+                docker_image="example/demo:latest",
+                agent_timeout_sec=30.0,
+                verifier_timeout_sec=30.0,
+                workdir="/workspace",
+                has_docker_compose=False,
+            )
+
+            cmd_no_fakeroot = build_verifier_exec_command(
+                task=task,
+                image_path=image_path,
+                workspace_dir=workspace_dir,
+                task_dir=task_dir,
+                verifier_logs_dir=verifier_logs_dir,
+                env={},
+                fakeroot=False,
+            )
+            self.assertNotIn("--fakeroot", cmd_no_fakeroot)
+            self.assertNotIn("--writable-tmpfs", cmd_no_fakeroot)
+
+            cmd_fakeroot = build_verifier_exec_command(
+                task=task,
+                image_path=image_path,
+                workspace_dir=workspace_dir,
+                task_dir=task_dir,
+                verifier_logs_dir=verifier_logs_dir,
+                env={},
+                fakeroot=True,
+            )
+            self.assertIn("--fakeroot", cmd_fakeroot)
+            self.assertIn("--writable-tmpfs", cmd_fakeroot)
+            self.assertIn("--contain", cmd_fakeroot)
+            self.assertIn("TMPDIR", cmd_fakeroot)
+            self.assertIn("CURL_CA_BUNDLE", cmd_fakeroot)
 
 
 if __name__ == "__main__":

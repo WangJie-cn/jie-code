@@ -10,6 +10,7 @@ from pathlib import Path
 
 from .agent_plugin_cache import load_plugin_cache_summary
 from .account_runtime import AccountRuntime
+from .ask_user_runtime import AskUserRuntime
 from .config_runtime import ConfigRuntime
 from .hook_policy import HookPolicyRuntime
 from .mcp_runtime import MCPRuntime
@@ -18,6 +19,7 @@ from .plugin_runtime import PluginRuntime
 from .remote_runtime import RemoteRuntime
 from .search_runtime import SearchRuntime
 from .task_runtime import TaskRuntime
+from .team_runtime import TeamRuntime
 from .agent_types import AgentRuntimeConfig
 
 MAX_STATUS_CHARS = 2000
@@ -237,6 +239,9 @@ def _get_user_context_cached(
     account_runtime = AccountRuntime.from_workspace(Path(cwd), additional_working_directories)
     if account_runtime.has_account_state():
         context['accountRuntime'] = account_runtime.render_summary()
+    ask_user_runtime = AskUserRuntime.from_workspace(Path(cwd), additional_working_directories)
+    if ask_user_runtime.has_state():
+        context['askUserRuntime'] = ask_user_runtime.render_summary()
     config_runtime = ConfigRuntime.from_workspace(Path(cwd))
     if config_runtime.has_config():
         context['configRuntime'] = config_runtime.render_summary()
@@ -246,6 +251,9 @@ def _get_user_context_cached(
     task_runtime = TaskRuntime.from_workspace(Path(cwd))
     if task_runtime.tasks:
         context['taskRuntime'] = task_runtime.render_summary()
+    team_runtime = TeamRuntime.from_workspace(Path(cwd), additional_working_directories)
+    if team_runtime.has_team_state():
+        context['teamRuntime'] = team_runtime.render_summary()
     return context
 
 

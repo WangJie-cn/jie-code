@@ -140,6 +140,12 @@ class MainCliTests(unittest.TestCase):
         self.assertEqual(args.command, 'account-profiles')
         self.assertEqual(args.cwd, '.')
 
+    def test_parser_accepts_ask_user_runtime_commands(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(['ask-history', '--cwd', '.'])
+        self.assertEqual(args.command, 'ask-history')
+        self.assertEqual(args.cwd, '.')
+
     def test_parser_accepts_search_runtime_commands(self) -> None:
         parser = build_parser()
         args = parser.parse_args(['search', 'repo query', '--cwd', '.', '--provider', 'local-search'])
@@ -166,4 +172,12 @@ class MainCliTests(unittest.TestCase):
         args = parser.parse_args(['config-get', 'review.mode', '--cwd', '.'])
         self.assertEqual(args.command, 'config-get')
         self.assertEqual(args.key_path, 'review.mode')
+        self.assertEqual(args.cwd, '.')
+
+    def test_parser_accepts_team_runtime_commands(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(['team-create', 'reviewers', '--member', 'alice', '--cwd', '.'])
+        self.assertEqual(args.command, 'team-create')
+        self.assertEqual(args.team_name, 'reviewers')
+        self.assertEqual(args.member, ['alice'])
         self.assertEqual(args.cwd, '.')

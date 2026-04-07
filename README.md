@@ -46,6 +46,9 @@
 | 🆕 | **MCP Transport** | Real stdio MCP transport for `initialize`, resource listing/reading, and tool listing/calling |
 | 🆕 | **Search Runtime** | Provider-backed `web_search` with local manifests, activation state, and `/search` flows |
 | 🆕 | **Config & Account Runtime** | Local config/settings mutation plus manifest-backed account profiles and login/logout state |
+| 🆕 | **Ask-User Runtime** | Queued or interactive local ask-user flow with history, slash commands, and agent tool support |
+| 🆕 | **Team Runtime** | Persisted local teams and message history with team/message tools and slash/CLI inspection |
+| 🆕 | **Notebook Edit Tool** | Native `.ipynb` cell editing through the real agent tool registry |
 | 🆕 | **Tokenizer-Aware Context** | Cached tokenizer backends with heuristic fallback for `/context`, `/status`, and compaction |
 | 🆕 | **Daemon Commands** | Local `daemon start/ps/logs/attach/kill` wrapper over background agent sessions |
 | 🆕 | **Background Sessions** | Local `agent-bg`, `agent-ps`, `agent-logs`, `agent-attach`, and `agent-kill` flows |
@@ -86,6 +89,9 @@ Built on the public porting workspace from [instructkr/claw-code](https://github
 | 🛰️ **MCP Runtime** | Local MCP manifests plus real stdio MCP transport for resources and tools |
 | 🔎 **Search Runtime** | Provider-backed `web_search` plus provider activation and status reporting |
 | ⚙️ **Config & Account Runtime** | Local config mutation, settings inspection, account profiles, and login/logout state |
+| 🙋 **Ask-User Runtime** | Queued answer or interactive user-question flow with history tracking |
+| 👥 **Team Runtime** | Persisted local teams plus message history, handoff notes, and collaboration metadata |
+| 📓 **Notebook Editing** | Native Jupyter notebook cell editing through `notebook_edit` |
 | 🪝 **Hook & Policy Runtime** | Trust reporting, safe env, managed settings, tool blocking, and budget overrides |
 | 🧠 **Context Engine** | Automatic context building with CLAUDE.md discovery, compaction, and snipping |
 | 🔢 **Tokenizer-Aware Accounting** | Model-aware token counting with cached tokenizer backends and fallback heuristics |
@@ -137,9 +143,12 @@ Built on the public porting workspace from [instructkr/claw-code](https://github
 - [x] Local hook and policy runtime with trust reporting, safe env, tool blocking, and budget overrides
 - [x] Local config runtime: config discovery, effective settings, source inspection, and config mutation
 - [x] Local account runtime: profile discovery, login/logout state, and account CLI/slash flows
+- [x] Local ask-user runtime: queued answers, history, and ask-user CLI/slash flows
+- [x] Local team runtime: persisted teams, team messages, and team CLI/slash flows
 - [x] Local search runtime with provider discovery, activation, and provider-backed `web_search`
 - [x] Local MCP runtime: manifest resources, stdio transport, MCP resources, and MCP tool calls
 - [x] Local task and plan runtimes with plan sync and dependency-aware task execution
+- [x] Notebook edit tool in the real Python tool registry
 - [x] Tokenizer-aware context accounting with cached tokenizer backends and heuristic fallback
 - [x] Plugin runtime: manifest discovery, hooks, aliases, virtual tools, tool blocking
 - [x] Plugin lifecycle hooks: resume, persist, delegate phases
@@ -175,7 +184,7 @@ claw-code/
 ├── .gitignore
 ├── images/
 │   └── logo.png
-├── src/                          # Python implementation (75+ modules)
+├── src/                          # Python implementation
 │   ├── main.py                   # CLI entry point & argument parsing
 │   ├── agent_runtime.py          # Core agent loop (LocalCodingAgent)
 │   ├── agent_tools.py            # Tool definitions & execution engine
@@ -197,21 +206,20 @@ claw-code/
 │   ├── remote_runtime.py         # Local remote profiles, connect/disconnect state, remote CLI support
 │   ├── background_runtime.py     # Local background sessions and daemon support
 │   ├── account_runtime.py        # Local account profiles, login/logout state, account CLI support
+│   ├── ask_user_runtime.py       # Local ask-user queued answers and interaction history
 │   ├── config_runtime.py         # Local workspace config/settings discovery and mutation
 │   ├── plan_runtime.py           # Persistent plan runtime and plan sync
 │   ├── task_runtime.py           # Persistent task runtime and task execution
 │   ├── task.py                   # Task state model and task dataclasses
+│   ├── team_runtime.py           # Local teams, messages, and collaboration metadata
 │   ├── hook_policy.py            # Hook/policy manifests, trust, and safe env handling
 │   ├── tokenizer_runtime.py      # Tokenizer-aware context accounting backends
 │   ├── permissions.py            # Tool permission filtering
 │   ├── cost_tracker.py           # Cost & budget enforcement
-│   ├── tools.py                  # Mirrored tool inventory
 │   ├── commands.py               # Mirrored command inventory
-│   ├── plugins/                  # Plugin subsystem
-│   ├── hooks/                    # Hook system (WIP)
-│   ├── remote/                   # Remote runtime modes (WIP)
-│   ├── voice/                    # Voice mode (WIP)
-│   └── vim/                      # VIM mode (WIP)
+│   ├── tools.py                  # Mirrored tool inventory
+│   ├── runtime.py                # Mirrored runtime facade
+│   └── reference_data/           # Mirrored inventory snapshots
 └── tests/                        # Unit tests
     ├── test_agent_runtime.py
     ├── test_agent_context.py

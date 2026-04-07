@@ -246,6 +246,43 @@ class AgentSlashCommandTests(unittest.TestCase):
         self.assertIn('profile=local', login_result.final_output)
         self.assertIn('logged_in=False', logout_result.final_output)
 
+    def test_ask_commands_render_local_ask_user_runtime(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workspace = Path(tmp_dir)
+            (workspace / '.claw-ask-user.json').write_text(
+                '{"answers":[{"question":"Approve deploy?","answer":"yes"}]}',
+                encoding='utf-8',
+            )
+            agent = LocalCodingAgent(
+                model_config=ModelConfig(model='Qwen/Qwen3-Coder-30B-A3B-Instruct'),
+                runtime_config=AgentRuntimeConfig(cwd=workspace),
+            )
+            status_result = agent.run('/ask')
+            history_result = agent.run('/ask history')
+        self.assertIn('# Ask User', status_result.final_output)
+        self.assertIn('Queued answers: 1', status_result.final_output)
+        self.assertIn('# Ask User History', history_result.final_output)
+
+    def test_team_commands_render_local_team_runtime(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workspace = Path(tmp_dir)
+            (workspace / '.claw-teams.json').write_text(
+                '{"teams":[{"name":"reviewers","members":["alice","bob"]}]}',
+                encoding='utf-8',
+            )
+            agent = LocalCodingAgent(
+                model_config=ModelConfig(model='Qwen/Qwen3-Coder-30B-A3B-Instruct'),
+                runtime_config=AgentRuntimeConfig(cwd=workspace),
+            )
+            teams_result = agent.run('/teams')
+            team_result = agent.run('/team reviewers')
+            messages_result = agent.run('/messages')
+        self.assertIn('# Teams', teams_result.final_output)
+        self.assertIn('reviewers', teams_result.final_output)
+        self.assertIn('# Team', team_result.final_output)
+        self.assertIn('alice', team_result.final_output)
+        self.assertIn('# Team Messages', messages_result.final_output)
+
     def test_config_commands_render_local_reports(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             workspace = Path(tmp_dir)

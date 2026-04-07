@@ -71,6 +71,8 @@ export OPENAI_API_KEY=anything
 export OPENAI_MODEL=ollama/qwen3
 ```
 
+If your cluster wraps `python3`, use an explicit interpreter path such as `/usr/bin/python3.9 -m ...` for the commands below.
+
 ### 1.5 Run the full unit test suite
 
 ```bash
@@ -90,6 +92,8 @@ python3 -m unittest tests.test_background_runtime -v
 python3 -m unittest tests.test_remote_runtime -v
 python3 -m unittest tests.test_config_runtime -v
 python3 -m unittest tests.test_account_runtime -v
+python3 -m unittest tests.test_ask_user_runtime -v
+python3 -m unittest tests.test_team_runtime -v
 python3 -m unittest tests.test_tokenizer_runtime -v
 python3 -m unittest tests.test_extended_tools -v
 python3 -m unittest tests.test_porting_workspace -v
@@ -191,6 +195,7 @@ mkdir -p ./test_cases_budget
 mkdir -p ./test_cases_plugins/plugins/demo
 mkdir -p ./test_cases_mcp
 mkdir -p ./test_cases_tasks
+mkdir -p ./test_cases_notebooks
 ```
 
 ### 4.1 Config fixtures
@@ -239,6 +244,67 @@ cat > ./test_cases/.claw-account.json <<'EOF'
       "org": "Harness"
     }
   ]
+}
+EOF
+```
+
+### 4.2b Ask-user fixtures
+
+```bash
+cat > ./test_cases/.claw-ask-user.json <<'EOF'
+{
+  "answers": [
+    {
+      "question": "Approve deploy?",
+      "answer": "yes"
+    },
+    {
+      "question": "Choose rollout mode",
+      "answer": "safe"
+    }
+  ]
+}
+EOF
+```
+
+### 4.2c Team fixtures
+
+```bash
+cat > ./test_cases/.claw-teams.json <<'EOF'
+{
+  "teams": [
+    {
+      "name": "reviewers",
+      "description": "Code review group",
+      "members": ["alice", "bob"]
+    },
+    {
+      "name": "release",
+      "description": "Release coordination group",
+      "members": ["ops", "qa"]
+    }
+  ]
+}
+EOF
+```
+
+### 4.2d Notebook fixture
+
+```bash
+cat > ./test_cases_notebooks/demo.ipynb <<'EOF'
+{
+ "cells": [
+  {
+   "cell_type": "code",
+   "metadata": {},
+   "source": ["print(1)\n"],
+   "outputs": [],
+   "execution_count": null
+  }
+ ],
+ "metadata": {},
+ "nbformat": 4,
+ "nbformat_minor": 5
 }
 EOF
 ```
@@ -528,11 +594,13 @@ python3 -m src.main agent "/settings" --cwd ./test_cases
 python3 -m src.main agent "/account" --cwd ./test_cases
 python3 -m src.main agent "/account profiles" --cwd ./test_cases
 python3 -m src.main agent "/account profile local" --cwd ./test_cases
+python3 -m src.main agent "/ask" --cwd ./test_cases
+python3 -m src.main agent "/ask history" --cwd ./test_cases
 python3 -m src.main agent "/login local" --cwd ./test_cases
 python3 -m src.main agent "/logout" --cwd ./test_cases
 ```
 
-### 5.3 Remote, search, task, and plan slash commands
+### 5.3 Remote, search, team, task, and plan slash commands
 
 ```bash
 python3 -m src.main agent "/remote" --cwd ./test_cases
@@ -549,6 +617,10 @@ python3 -m src.main agent "/search providers" --cwd ./test_cases
 python3 -m src.main agent "/search provider local-search" --cwd ./test_cases
 python3 -m src.main agent "/search use local-search" --cwd ./test_cases
 python3 -m src.main agent "/search python argparse tutorial" --cwd ./test_cases
+python3 -m src.main agent "/teams" --cwd ./test_cases
+python3 -m src.main agent "/team reviewers" --cwd ./test_cases
+python3 -m src.main agent "/messages" --cwd ./test_cases
+python3 -m src.main agent "/messages reviewers" --cwd ./test_cases
 python3 -m src.main agent "/plan" --cwd ./test_cases_tasks
 python3 -m src.main agent "/planner" --cwd ./test_cases_tasks
 python3 -m src.main agent "/tasks" --cwd ./test_cases_tasks
@@ -1156,6 +1228,31 @@ python3 -m src.main agent \
   --show-transcript
 ```
 
+## 14A. Ask-user Runtime
+
+### 14A.1 CLI status and history
+
+```bash
+python3 -m src.main ask-status --cwd ./test_cases
+python3 -m src.main ask-history --cwd ./test_cases
+```
+
+### 14A.2 Slash commands
+
+```bash
+python3 -m src.main agent "/ask" --cwd ./test_cases
+python3 -m src.main agent "/ask history" --cwd ./test_cases
+```
+
+### 14A.3 Real tool loop
+
+```bash
+python3 -m src.main agent \
+  "Use ask_user_question to answer 'Approve deploy?' and then summarize the decision." \
+  --cwd ./test_cases \
+  --show-transcript
+```
+
 ## 15. Search Runtime And Real Web Search
 
 ### 15.1 Provider status and activation
@@ -1301,6 +1398,56 @@ python3 -m src.main agent "/plan" --cwd ./test_cases_tasks
 python3 -m src.main agent "/planner" --cwd ./test_cases_tasks
 python3 -m src.main agent-context-raw --cwd ./test_cases_tasks
 python3 -m src.main agent-prompt --cwd ./test_cases_tasks
+```
+
+## 18A. Team Runtime
+
+### 18A.1 CLI status and inspection
+
+```bash
+python3 -m src.main team-status --cwd ./test_cases
+python3 -m src.main team-list --cwd ./test_cases
+python3 -m src.main team-get reviewers --cwd ./test_cases
+python3 -m src.main team-messages --cwd ./test_cases
+```
+
+### 18A.2 Create and delete teams
+
+```bash
+python3 -m src.main team-create docs --member alice --member bob --cwd ./test_cases
+python3 -m src.main team-list --cwd ./test_cases
+python3 -m src.main team-delete docs --cwd ./test_cases
+```
+
+### 18A.3 Slash commands
+
+```bash
+python3 -m src.main agent "/teams" --cwd ./test_cases
+python3 -m src.main agent "/team reviewers" --cwd ./test_cases
+python3 -m src.main agent "/messages" --cwd ./test_cases
+python3 -m src.main agent "/messages reviewers" --cwd ./test_cases
+```
+
+### 18A.4 Real tool loop
+
+```bash
+python3 -m src.main agent \
+  "Create a local team called docs with members alice and bob, send a message to that team asking for notebook review, then show the team messages." \
+  --cwd ./test_cases \
+  --allow-write \
+  --show-transcript
+```
+
+## 18B. Notebook Edit Tool
+
+### 18B.1 Direct notebook edit through the agent loop
+
+```bash
+python3 -m src.main agent \
+  "Use notebook_edit to update demo.ipynb cell 0 so it prints 2, then read back the notebook file and summarize the change." \
+  --cwd ./test_cases_notebooks \
+  --allow-write \
+  --show-transcript
 ```
 
 ### 18.2 Create and inspect tasks

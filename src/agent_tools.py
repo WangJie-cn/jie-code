@@ -18,12 +18,14 @@ from .agent_types import AgentPermissions, AgentRuntimeConfig, ToolExecutionResu
 
 if TYPE_CHECKING:
     from .account_runtime import AccountRuntime
+    from .ask_user_runtime import AskUserRuntime
     from .config_runtime import ConfigRuntime
     from .mcp_runtime import MCPRuntime
     from .plan_runtime import PlanRuntime
     from .remote_runtime import RemoteRuntime
     from .search_runtime import SearchRuntime
     from .task_runtime import TaskRuntime
+    from .team_runtime import TeamRuntime
 
 
 class ToolPermissionError(RuntimeError):
@@ -44,11 +46,13 @@ class ToolExecutionContext:
     tool_registry: dict[str, 'AgentTool'] | None = None
     search_runtime: 'SearchRuntime | None' = None
     account_runtime: 'AccountRuntime | None' = None
+    ask_user_runtime: 'AskUserRuntime | None' = None
     config_runtime: 'ConfigRuntime | None' = None
     mcp_runtime: 'MCPRuntime | None' = None
     remote_runtime: 'RemoteRuntime | None' = None
     plan_runtime: 'PlanRuntime | None' = None
     task_runtime: 'TaskRuntime | None' = None
+    team_runtime: 'TeamRuntime | None' = None
 
 
 ToolHandler = Callable[
@@ -114,11 +118,13 @@ def build_tool_context(
     tool_registry: dict[str, AgentTool] | None = None,
     search_runtime: 'SearchRuntime | None' = None,
     account_runtime: 'AccountRuntime | None' = None,
+    ask_user_runtime: 'AskUserRuntime | None' = None,
     config_runtime: 'ConfigRuntime | None' = None,
     mcp_runtime: 'MCPRuntime | None' = None,
     remote_runtime: 'RemoteRuntime | None' = None,
     plan_runtime: 'PlanRuntime | None' = None,
     task_runtime: 'TaskRuntime | None' = None,
+    team_runtime: 'TeamRuntime | None' = None,
 ) -> ToolExecutionContext:
     return ToolExecutionContext(
         root=config.cwd.resolve(),
@@ -129,11 +135,13 @@ def build_tool_context(
         tool_registry=tool_registry,
         search_runtime=search_runtime,
         account_runtime=account_runtime,
+        ask_user_runtime=ask_user_runtime,
         config_runtime=config_runtime,
         mcp_runtime=mcp_runtime,
         remote_runtime=remote_runtime,
         plan_runtime=plan_runtime,
         task_runtime=task_runtime,
+        team_runtime=team_runtime,
     )
 
 
@@ -237,6 +245,22 @@ def default_tool_registry() -> dict[str, AgentTool]:
                 'required': ['path', 'old_text', 'new_text'],
             },
             handler=_edit_file,
+        ),
+        AgentTool(
+            name='notebook_edit',
+            description='Edit a Jupyter notebook cell by replacing or appending source in a .ipynb file.',
+            parameters={
+                'type': 'object',
+                'properties': {
+                    'path': {'type': 'string'},
+                    'cell_index': {'type': 'integer', 'minimum': 0},
+                    'source': {'type': 'string'},
+                    'cell_type': {'type': 'string'},
+                    'create_cell': {'type': 'boolean'},
+                },
+                'required': ['path', 'cell_index', 'source'],
+            },
+            handler=_notebook_edit,
         ),
         AgentTool(
             name='glob_search',
@@ -367,6 +391,25 @@ def default_tool_registry() -> dict[str, AgentTool]:
                 'required': ['seconds'],
             },
             handler=_sleep,
+        ),
+        AgentTool(
+            name='ask_user_question',
+            description='Request an answer from the local ask-user runtime using queued or interactive answers.',
+            parameters={
+                'type': 'object',
+                'properties': {
+                    'question': {'type': 'string'},
+                    'header': {'type': 'string'},
+                    'question_id': {'type': 'string'},
+                    'choices': {
+                        'type': 'array',
+                        'items': {'type': 'string'},
+                    },
+                    'allow_free_text': {'type': 'boolean'},
+                },
+                'required': ['question'],
+            },
+            handler=_ask_user_question,
         ),
         AgentTool(
             name='account_status',
@@ -630,6 +673,85 @@ def default_tool_registry() -> dict[str, AgentTool]:
                 },
             },
             handler=_task_next,
+        ),
+        AgentTool(
+            name='team_list',
+            description='List locally configured collaboration teams.',
+            parameters={
+                'type': 'object',
+                'properties': {
+                    'query': {'type': 'string'},
+                    'max_teams': {'type': 'integer', 'minimum': 1, 'maximum': 200},
+                },
+            },
+            handler=_team_list,
+        ),
+        AgentTool(
+            name='team_get',
+            description='Show a locally configured collaboration team by name.',
+            parameters={
+                'type': 'object',
+                'properties': {
+                    'team_name': {'type': 'string'},
+                },
+                'required': ['team_name'],
+            },
+            handler=_team_get,
+        ),
+        AgentTool(
+            name='team_create',
+            description='Create a locally stored collaboration team.',
+            parameters={
+                'type': 'object',
+                'properties': {
+                    'team_name': {'type': 'string'},
+                    'description': {'type': 'string'},
+                    'members': {'type': 'array', 'items': {'type': 'string'}},
+                    'metadata': {'type': 'object'},
+                },
+                'required': ['team_name'],
+            },
+            handler=_team_create,
+        ),
+        AgentTool(
+            name='team_delete',
+            description='Delete a locally stored collaboration team and its recorded messages.',
+            parameters={
+                'type': 'object',
+                'properties': {
+                    'team_name': {'type': 'string'},
+                },
+                'required': ['team_name'],
+            },
+            handler=_team_delete,
+        ),
+        AgentTool(
+            name='send_message',
+            description='Send a local collaboration message to a team or teammate and persist it in the team runtime.',
+            parameters={
+                'type': 'object',
+                'properties': {
+                    'team_name': {'type': 'string'},
+                    'message': {'type': 'string'},
+                    'sender': {'type': 'string'},
+                    'recipient': {'type': 'string'},
+                    'metadata': {'type': 'object'},
+                },
+                'required': ['team_name', 'message'],
+            },
+            handler=_send_message,
+        ),
+        AgentTool(
+            name='team_messages',
+            description='Show locally recorded collaboration messages for all teams or one team.',
+            parameters={
+                'type': 'object',
+                'properties': {
+                    'team_name': {'type': 'string'},
+                    'limit': {'type': 'integer', 'minimum': 1, 'maximum': 200},
+                },
+            },
+            handler=_team_messages,
         ),
         AgentTool(
             name='task_list',
@@ -1047,6 +1169,85 @@ def _edit_file(arguments: dict[str, Any], context: ToolExecutionContext) -> str:
     )
 
 
+def _notebook_edit(arguments: dict[str, Any], context: ToolExecutionContext) -> str:
+    _ensure_write_allowed(context)
+    target = _resolve_path(_require_string(arguments, 'path'), context, allow_missing=False)
+    if target.suffix != '.ipynb':
+        raise ToolExecutionError('notebook_edit requires a .ipynb target')
+    if not target.is_file():
+        raise ToolExecutionError(f'Path is not a file: {target}')
+    cell_index = arguments.get('cell_index')
+    if isinstance(cell_index, bool) or not isinstance(cell_index, int) or cell_index < 0:
+        raise ToolExecutionError('cell_index must be an integer >= 0')
+    source = arguments.get('source')
+    if not isinstance(source, str):
+        raise ToolExecutionError('source must be a string')
+    cell_type = arguments.get('cell_type', 'code')
+    if cell_type is not None and not isinstance(cell_type, str):
+        raise ToolExecutionError('cell_type must be a string')
+    create_cell = arguments.get('create_cell', False)
+    if not isinstance(create_cell, bool):
+        raise ToolExecutionError('create_cell must be a boolean')
+
+    raw = target.read_text(encoding='utf-8', errors='replace')
+    before_sha256 = hashlib.sha256(raw.encode('utf-8')).hexdigest()
+    try:
+        notebook = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ToolExecutionError(f'Notebook is not valid JSON: {target}') from exc
+    if not isinstance(notebook, dict):
+        raise ToolExecutionError('Notebook payload must be a JSON object')
+    cells = notebook.get('cells')
+    if not isinstance(cells, list):
+        raise ToolExecutionError('Notebook does not contain a cells array')
+
+    while len(cells) <= cell_index:
+        if not create_cell:
+            raise ToolExecutionError(
+                f'Notebook cell {cell_index} does not exist; pass create_cell=true to append missing cells'
+            )
+        cells.append(
+            {
+                'cell_type': cell_type or 'code',
+                'metadata': {},
+                'source': [],
+                'outputs': [],
+                'execution_count': None,
+            }
+        )
+    cell = cells[cell_index]
+    if not isinstance(cell, dict):
+        raise ToolExecutionError(f'Notebook cell {cell_index} is not a JSON object')
+    existing_type = cell.get('cell_type')
+    if not isinstance(existing_type, str):
+        existing_type = 'code'
+    source_lines = source.splitlines(keepends=True)
+    if source and not source.endswith('\n'):
+        source_lines = [*source_lines[:-1], source_lines[-1]]
+    cell['cell_type'] = cell_type or existing_type
+    cell['source'] = source_lines
+    if cell['cell_type'] == 'code':
+        cell.setdefault('outputs', [])
+        cell.setdefault('execution_count', None)
+    updated = json.dumps(notebook, ensure_ascii=True, indent=1) + '\n'
+    target.write_text(updated, encoding='utf-8')
+    after_sha256 = hashlib.sha256(updated.encode('utf-8')).hexdigest()
+    rel = target.relative_to(context.root)
+    return (
+        f'updated notebook cell {cell_index} in {rel}',
+        {
+            'action': 'notebook_edit',
+            'path': str(rel),
+            'cell_index': cell_index,
+            'cell_type': cell['cell_type'],
+            'before_sha256': before_sha256,
+            'after_sha256': after_sha256,
+            'before_preview': _snapshot_text(raw),
+            'after_preview': _snapshot_text(updated),
+        },
+    )
+
+
 def _glob_search(arguments: dict[str, Any], context: ToolExecutionContext) -> str:
     pattern = _require_string(arguments, 'pattern')
     matches = sorted(context.root.glob(pattern))
@@ -1321,6 +1522,69 @@ def _sleep(arguments: dict[str, Any], context: ToolExecutionContext) -> str:
     )
 
 
+def _ask_user_question(arguments: dict[str, Any], context: ToolExecutionContext) -> str:
+    runtime = _require_ask_user_runtime(context)
+    question = _require_string(arguments, 'question')
+    header = arguments.get('header')
+    question_id = arguments.get('question_id')
+    if header is not None and not isinstance(header, str):
+        raise ToolExecutionError('header must be a string')
+    if question_id is not None and not isinstance(question_id, str):
+        raise ToolExecutionError('question_id must be a string')
+    raw_choices = arguments.get('choices', ())
+    if raw_choices is None:
+        raw_choices = ()
+    if not isinstance(raw_choices, (list, tuple)):
+        raise ToolExecutionError('choices must be an array of strings')
+    choices = tuple(
+        item.strip()
+        for item in raw_choices
+        if isinstance(item, str) and item.strip()
+    )
+    if len(choices) != len(raw_choices):
+        raise ToolExecutionError('choices must contain only non-empty strings')
+    allow_free_text = arguments.get('allow_free_text', True)
+    if not isinstance(allow_free_text, bool):
+        raise ToolExecutionError('allow_free_text must be a boolean')
+    try:
+        response = runtime.answer(
+            question=question,
+            choices=choices,
+            question_id=question_id,
+            header=header,
+            allow_free_text=allow_free_text,
+        )
+    except LookupError as exc:
+        raise ToolExecutionError(str(exc)) from exc
+    lines = ['# Ask User', '']
+    if header:
+        lines.append(f'- Header: {header}')
+    if question_id:
+        lines.append(f'- Question ID: {question_id}')
+    lines.append(f'- Question: {question}')
+    if choices:
+        lines.append('- Choices: ' + ', '.join(choices))
+    lines.extend(
+        [
+            f'- Source: {response.source}',
+            '',
+            response.answer,
+        ]
+    )
+    return (
+        '\n'.join(lines),
+        {
+            'action': 'ask_user_question',
+            'question': question,
+            'question_id': question_id,
+            'header': header,
+            'source': response.source,
+            'answer_preview': _snapshot_text(response.answer),
+            'choices': list(choices),
+        },
+    )
+
+
 def _account_status(arguments: dict[str, Any], context: ToolExecutionContext) -> str:
     runtime = _require_account_runtime(context)
     profile = arguments.get('profile')
@@ -1577,6 +1841,125 @@ def _remote_disconnect(
             'target': report.target,
         },
     )
+
+
+def _team_list(arguments: dict[str, Any], context: ToolExecutionContext) -> str:
+    runtime = _require_team_runtime(context)
+    query = arguments.get('query')
+    if query is not None and not isinstance(query, str):
+        raise ToolExecutionError('query must be a string')
+    max_teams = _coerce_int(arguments, 'max_teams', 50)
+    return runtime.render_teams_index(query=query, limit=max_teams)
+
+
+def _team_get(arguments: dict[str, Any], context: ToolExecutionContext) -> str:
+    runtime = _require_team_runtime(context)
+    team_name = _require_string(arguments, 'team_name')
+    try:
+        return runtime.render_team(team_name)
+    except KeyError as exc:
+        raise ToolExecutionError(f'Unknown team: {team_name}') from exc
+
+
+def _team_create(arguments: dict[str, Any], context: ToolExecutionContext) -> str:
+    _ensure_write_allowed(context)
+    runtime = _require_team_runtime(context)
+    team_name = _require_string(arguments, 'team_name')
+    description = arguments.get('description')
+    members = arguments.get('members', ())
+    metadata = arguments.get('metadata')
+    if description is not None and not isinstance(description, str):
+        raise ToolExecutionError('description must be a string')
+    if not isinstance(members, (list, tuple)):
+        raise ToolExecutionError('members must be an array of strings')
+    if metadata is not None and not isinstance(metadata, dict):
+        raise ToolExecutionError('metadata must be an object')
+    try:
+        team = runtime.create_team(
+            team_name,
+            description=description,
+            members=members,
+            metadata=metadata,
+        )
+    except KeyError as exc:
+        raise ToolExecutionError(f'Team already exists: {team_name}') from exc
+    return (
+        f'created team {team.name}',
+        {
+            'action': 'team_create',
+            'team_name': team.name,
+            'member_count': len(team.members),
+            'path': str(runtime.state_path),
+        },
+    )
+
+
+def _team_delete(arguments: dict[str, Any], context: ToolExecutionContext) -> str:
+    _ensure_write_allowed(context)
+    runtime = _require_team_runtime(context)
+    team_name = _require_string(arguments, 'team_name')
+    try:
+        team = runtime.delete_team(team_name)
+    except KeyError as exc:
+        raise ToolExecutionError(f'Unknown team: {team_name}') from exc
+    return (
+        f'deleted team {team.name}',
+        {
+            'action': 'team_delete',
+            'team_name': team.name,
+            'path': str(runtime.state_path),
+        },
+    )
+
+
+def _send_message(arguments: dict[str, Any], context: ToolExecutionContext) -> str:
+    _ensure_write_allowed(context)
+    runtime = _require_team_runtime(context)
+    team_name = _require_string(arguments, 'team_name')
+    message = _require_string(arguments, 'message')
+    sender = arguments.get('sender', 'agent')
+    recipient = arguments.get('recipient')
+    metadata = arguments.get('metadata')
+    if sender is not None and not isinstance(sender, str):
+        raise ToolExecutionError('sender must be a string')
+    if recipient is not None and not isinstance(recipient, str):
+        raise ToolExecutionError('recipient must be a string')
+    if metadata is not None and not isinstance(metadata, dict):
+        raise ToolExecutionError('metadata must be an object')
+    try:
+        stored = runtime.send_message(
+            team_name=team_name,
+            text=message,
+            sender=sender or 'agent',
+            recipient=recipient,
+            metadata=metadata,
+        )
+    except KeyError as exc:
+        raise ToolExecutionError(f'Unknown team: {team_name}') from exc
+    return (
+        f'sent message to team {stored.team_name}',
+        {
+            'action': 'send_message',
+            'team_name': stored.team_name,
+            'sender': stored.sender,
+            'recipient': stored.recipient,
+            'message_id': stored.message_id,
+            'message_preview': _snapshot_text(stored.text),
+            'path': str(runtime.state_path),
+        },
+    )
+
+
+def _team_messages(arguments: dict[str, Any], context: ToolExecutionContext) -> str:
+    runtime = _require_team_runtime(context)
+    team_name = arguments.get('team_name')
+    if team_name is not None and not isinstance(team_name, str):
+        raise ToolExecutionError('team_name must be a string')
+    limit = _coerce_int(arguments, 'limit', 20)
+    try:
+        return runtime.render_messages(team_name=team_name, limit=limit)
+    except KeyError as exc:
+        raise ToolExecutionError(f'Unknown team: {team_name}') from exc
 
 
 def _task_list(arguments: dict[str, Any], context: ToolExecutionContext) -> str:
@@ -2048,6 +2431,12 @@ def _require_account_runtime(context: ToolExecutionContext):
     return context.account_runtime
 
 
+def _require_ask_user_runtime(context: ToolExecutionContext):
+    if context.ask_user_runtime is None:
+        raise ToolExecutionError('No local ask-user runtime is available.')
+    return context.ask_user_runtime
+
+
 def _require_search_runtime(context: ToolExecutionContext):
     if context.search_runtime is None or not context.search_runtime.has_search_runtime():
         raise ToolExecutionError(
@@ -2093,6 +2482,12 @@ def _require_task_runtime(context: ToolExecutionContext):
     if context.task_runtime is None:
         raise ToolExecutionError('Local task runtime is not available.')
     return context.task_runtime
+
+
+def _require_team_runtime(context: ToolExecutionContext):
+    if context.team_runtime is None:
+        raise ToolExecutionError('Local team runtime is not available.')
+    return context.team_runtime
 
 
 def _task_mutation_metadata(
