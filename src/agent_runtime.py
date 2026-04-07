@@ -99,6 +99,8 @@ class LocalCodingAgent:
     worktree_runtime: WorktreeRuntime | None = None
     last_session: AgentSessionState | None = field(default=None, init=False, repr=False)
     last_run_result: AgentRunResult | None = field(default=None, init=False, repr=False)
+    cumulative_usage: UsageStats = field(default_factory=UsageStats, init=False, repr=False)
+    cumulative_cost_usd: float = field(default=0.0, init=False, repr=False)
     active_session_id: str | None = field(default=None, init=False, repr=False)
     last_session_path: str | None = field(default=None, init=False, repr=False)
     managed_agent_id: str | None = field(default=None, init=False, repr=False)
@@ -321,6 +323,7 @@ class LocalCodingAgent:
             scratchpad_directory=scratchpad_directory,
             existing_file_history=(),
         )
+        self._accumulate_usage(result)
         self._finalize_managed_agent(result)
         return result
 
@@ -357,6 +360,7 @@ class LocalCodingAgent:
             scratchpad_directory=scratchpad_directory,
             existing_file_history=stored_session.file_history,
         )
+        self._accumulate_usage(result)
         self._finalize_managed_agent(result)
         return result
 
@@ -3362,6 +3366,11 @@ class LocalCodingAgent:
             stop_reason=result.stop_reason,
         )
         self.resume_source_session_id = None
+
+    def _accumulate_usage(self, result: AgentRunResult) -> None:
+        """Add a run's usage to the cumulative session totals."""
+        self.cumulative_usage = self.cumulative_usage + result.usage
+        self.cumulative_cost_usd += result.total_cost_usd
 
     def _refresh_runtime_views_for_tool_result(
         self,

@@ -4,6 +4,8 @@ This document tracks what is already implemented in Python and what is still mis
 
 This is a functionality-oriented checklist, not a line-by-line source equivalence claim. Large parts of the mirrored Python workspace still act as inventory or scaffolding, while the working Python runtime currently lives mainly in [`src/agent_runtime.py`](src/agent_runtime.py), [`src/query_engine.py`](src/query_engine.py), [`src/agent_tools.py`](src/agent_tools.py), [`src/agent_prompting.py`](src/agent_prompting.py), [`src/agent_context.py`](src/agent_context.py), [`src/agent_manager.py`](src/agent_manager.py), [`src/plugin_runtime.py`](src/plugin_runtime.py), [`src/agent_slash_commands.py`](src/agent_slash_commands.py), and [`src/openai_compat.py`](src/openai_compat.py).
 
+---
+
 ## 1. Core Agent Runtime
 
 Done:
@@ -117,7 +119,10 @@ Missing:
 - [ ] Full file history snapshots and replay flows beyond the current preview/id-based implementation and delegated-batch replay metadata
 - [ ] Full executable plugin lifecycle beyond manifest-driven prompt/tool/session hooks, blocking, aliases, virtual tools, and persisted runtime state
 - [ ] Full session compaction / snipping parity beyond lineage-aware summaries, mutation-serial compaction metadata, and replay reminders
-- [ ] Full `QueryEngine.ts` parity
+- [ ] Full `QueryEngine.ts` parity (session init, message normalization, SDK-compatible message transforms, attachment handling)
+- [ ] Auto-compact and context collapse features from `query.ts`
+- [ ] Prompt length validation from `query.ts`
+- [ ] Token budget calculations from `query/tokenBudget.ts`
 
 ## 2. CLI Entrypoints And Runtime Modes
 
@@ -147,15 +152,22 @@ Done:
 Missing:
 
 - [ ] Full daemon supervisor parity beyond the current local daemon wrapper and worker flow
-- [ ] Remote-control / bridge runtime mode
+- [ ] Remote-control / bridge runtime mode (`src/bridge/` — 30+ files: bridgeMain, bridgeApi, bridgeConfig, bridgeMessaging, bridgePermissionCallbacks, replBridge, sessionRunner, trustedDevice, etc.)
 - [ ] Browser/native-host runtime mode
-- [ ] Computer-use MCP mode
+- [ ] Computer-use MCP mode (`src/entrypoints/mcp.ts`)
 - [ ] Template job mode
 - [ ] Environment runner mode
 - [ ] Self-hosted runner mode
 - [ ] tmux fast paths
 - [ ] Worktree fast paths at the CLI entrypoint level
-- [ ] Full `entrypoints/cli.tsx` and `entrypoints/init.ts` parity
+- [ ] Node.js version check and platform setup from `setup.ts`
+- [ ] Worktree creation/setup from `setup.ts`
+- [ ] Terminal backup/restore from `setup.ts`
+- [ ] Release notes checking from `setup.ts`
+- [ ] Full `entrypoints/cli.tsx` parity (version flag, feature flags, env setup, dynamic imports)
+- [ ] Full `entrypoints/init.ts` parity (settings validation, OAuth, policy limits, telemetry, cleanup handlers)
+- [ ] SDK entrypoint (`entrypoints/sdk/` — controlTypes, coreTypes, runtimeTypes, settingsTypes, toolTypes)
+- [ ] Sandbox types/network config schema (`entrypoints/sandboxTypes.ts`)
 
 ## 3. Prompt Assembly
 
@@ -176,18 +188,34 @@ Done:
 - [x] Local planning guidance section in the Python system prompt
 - [x] Local task guidance section in the Python system prompt
 
+- [x] Product metadata/branding from `constants/product.ts` — ported to `src/prompt_constants.py`
+- [x] API limits constants from `constants/apiLimits.ts` — ported to `src/prompt_constants.py`
+- [x] Tool limits constants from `constants/toolLimits.ts` — ported to `src/prompt_constants.py`
+- [x] Spinner verbs from `constants/spinnerVerbs.ts` (187 verbs) — ported to `src/prompt_constants.py`
+- [x] Turn-completion verbs from `constants/turnCompletionVerbs.ts` (8 verbs) — ported to `src/prompt_constants.py`
+- [x] Figures/UI symbols from `constants/figures.ts` — ported to `src/prompt_constants.py`
+- [x] XML tag constants from `constants/xml.ts` — ported to `src/prompt_constants.py`
+- [x] Message constants from `constants/messages.ts` — ported to `src/prompt_constants.py`
+- [x] Date utilities from `constants/common.ts` — ported to `src/prompt_constants.py`
+- [x] System prompt section caching from `constants/systemPromptSections.ts` — ported to `src/prompt_constants.py`
+- [x] Output-style variants from `constants/outputStyles.ts` — ported to `src/prompt_constants.py`
+- [x] Cyber / risk instruction from `constants/cyberRiskInstruction.ts` — ported to `src/prompt_constants.py`
+- [x] System prompt prefixes from `constants/system.ts` — ported to `src/prompt_constants.py`
+- [x] Knowledge cutoff / model family info from `constants/prompts.ts` — ported to `src/prompt_constants.py`
+- [x] Hook instruction section template — ported to `src/prompt_constants.py`
+- [x] System reminders section — ported to `src/prompt_constants.py`
+- [x] Summarize tool results section — ported to `src/prompt_constants.py`
+- [x] Language-control section helper — ported to `src/prompt_constants.py`
+- [x] Scratchpad prompt instructions helper — ported to `src/prompt_constants.py`
+- [x] Default agent prompt — ported to `src/prompt_constants.py`
+
 Missing:
 
-- [ ] Full parity with `constants/prompts.ts`
-- [ ] Hook instruction sections
-- [ ] MCP instruction sections
-- [ ] Model-family-specific prompt variations
-- [ ] Output-style variants
-- [ ] Language-control sections
-- [ ] Scratchpad prompt instructions
+- [ ] Full parity with `constants/prompts.ts` runtime section assembly (many sections already exist in agent_prompting.py)
+- [ ] MCP instruction sections (runtime MCP integration)
+- [ ] Model-family-specific prompt variations (runtime)
 - [ ] More exact autonomous/proactive behavior sections
-- [ ] Growthbook / feature-gated prompt sections
-- [ ] Cyber / risk sections used upstream
+- [ ] Growthbook / feature-gated prompt sections (N/A for external builds)
 
 ## 4. Context Building And Memory
 
@@ -216,79 +244,122 @@ Done:
 Missing:
 
 - [ ] Full tokenizer/chat-message framing parity beyond the current model-aware text token counters
-- [ ] Full parity with `utils/queryContext.ts`
-- [ ] Rich memory prompt loading
+- [ ] Full parity with `utils/queryContext.ts` (context analysis, suggestions, cache shaping)
+- [ ] Rich memory prompt loading (`services/SessionMemory/`)
 - [ ] Internal permission-aware memory handling
 - [ ] Resume-aware prompt cache shaping used upstream
 - [ ] More exact context cache invalidation rules
-- [ ] Session context analysis parity
-- [ ] Full memory subsystem parity
+- [ ] Session context analysis parity (`utils/contextAnalysis.ts`, `utils/contextSuggestions.ts`)
+- [ ] Full memory subsystem parity (`utils/memory/`, `services/extractMemories/`)
+- [ ] Memory extraction from conversations (`services/extractMemories/extractMemories.ts`)
+- [ ] Team memory sync (`services/teamMemorySync/`)
+- [ ] Away summary generation (`services/awaySummary.ts`)
+- [ ] Token estimation service (`services/tokenEstimation.ts`)
+- [ ] Paste content storage and reference parsing (`history.ts`)
+- [ ] Image paste handling
 
 ## 5. Slash Commands
 
-Done:
+Done (37 slash command names in 29 specs):
 
-- [x] `/help`
-- [x] `/commands`
-- [x] `/context`
-- [x] `/usage`
-- [x] `/context-raw`
-- [x] `/env`
-- [x] `/mcp`
-- [x] `/mcp tools`
-- [x] `/mcp tool <name>`
-- [x] `/search`
-- [x] `/remote`
+- [x] `/help`, `/commands`
+- [x] `/context`, `/usage`
+- [x] `/context-raw`, `/env`
+- [x] `/mcp` (with subcommands: `tools`, `tool <name>`)
+- [x] `/search` (with subcommands: `providers`, `provider`, `use`)
+- [x] `/remote` (with `enter`, `exit`)
+- [x] `/worktree` (with `enter`, `exit`)
+- [x] `/account` (with `profiles`, `profile`)
+- [x] `/ask` (with `history`)
+- [x] `/login`
+- [x] `/logout`
+- [x] `/config`, `/settings` (with `effective`, `source`, `get`, `set`)
 - [x] `/remotes`
 - [x] `/ssh`
 - [x] `/teleport`
 - [x] `/direct-connect`
 - [x] `/deep-link`
-- [x] `/disconnect`
-- [x] `/account`
-- [x] `/login`
-- [x] `/logout`
+- [x] `/disconnect`, `/remote-disconnect`
 - [x] `/resources`
 - [x] `/resource`
-- [x] `/plan`
-- [x] `/planner`
-- [x] `/tasks`
-- [x] `/todo`
+- [x] `/tasks`, `/todo`
+- [x] `/workflows`, `/workflow`
+- [x] `/triggers`, `/trigger`
+- [x] `/teams`, `/team`, `/messages`
+- [x] `/task-next`, `/next-task`
+- [x] `/plan`, `/planner`
 - [x] `/task`
-- [x] `/task-next`
-- [x] `/prompt`
-- [x] `/system-prompt`
+- [x] `/prompt`, `/system-prompt`
 - [x] `/permissions`
-- [x] `/hooks`
-- [x] `/policy`
+- [x] `/hooks`, `/policy`
 - [x] `/trust`
 - [x] `/model`
 - [x] `/tools`
 - [x] `/memory`
-- [x] `/status`
-- [x] `/session`
+- [x] `/status`, `/session`
 - [x] `/clear`
-- [x] `/config`
-- [x] `/settings`
 
-Missing:
+Missing npm slash commands (from `src/commands/` — 80+ commands total):
 
-- [ ] Full npm slash-command surface
-- [x] Slash commands backed by MCP integration
-- [ ] Slash commands tied to task/plan systems beyond the current local `/plan`, `/tasks`, and `/task` flows
-- [ ] Slash commands tied to remote/background sessions beyond the current local remote connect/disconnect and background inspection flows
-- [ ] Slash commands with richer interactive behavior
-- [ ] Slash commands tied to plugins and bundled skills
-- [ ] Slash commands tied to account, settings, and auth flows beyond the current local `/account`, `/login`, `/logout`, `/config`, and `/settings` flows
+- [ ] `/add-dir` — Add a new working directory
+- [ ] `/agents` — Manage agent configurations
+- [x] `/branch` — Create a branch of the current conversation
+- [ ] `/bridge` — Connect for remote-control sessions
+- [ ] `/btw` — Quick side question without interrupting main conversation
+- [ ] `/chrome` — Chrome extension settings
+- [x] `/color` — Set the prompt bar color for this session
+- [x] `/compact` — Clear history but keep a summary in context
+- [x] `/copy` — Copy Claude's last response to clipboard
+- [x] `/cost` — Show total cost and duration of session
+- [ ] `/desktop` — Continue session in Claude Desktop
+- [x] `/diff` — View uncommitted changes and per-turn diffs
+- [x] `/doctor` — Diagnose and verify installation and settings
+- [x] `/effort` — Set effort level for model usage
+- [x] `/exit` — Exit the REPL
+- [x] `/export` — Export conversation to file or clipboard
+- [ ] `/extra-usage` — Configure extra usage for rate limits
+- [ ] `/fast` — Toggle fast mode
+- [ ] `/feedback` — Submit feedback
+- [x] `/files` — List all files currently in context
+- [ ] `/ide` — Manage IDE integrations and show status
+- [ ] `/install-github-app` — Set up GitHub Actions
+- [ ] `/install-slack-app` — Install Slack app
+- [ ] `/keybindings` — Open keybindings config file
+- [ ] `/mobile` — QR code for mobile app
+- [ ] `/output-style` — Change output style
+- [ ] `/passes` — Passes management
+- [ ] `/plugin` — Plugin management
+- [ ] `/pr_comments` — Get comments from a GitHub PR
+- [ ] `/privacy-settings` — View/update privacy settings
+- [ ] `/rate-limit-options` — Show options when rate limited
+- [ ] `/release-notes` — View release notes
+- [ ] `/reload-plugins` — Activate pending plugin changes
+- [ ] `/remote-env` — Configure default remote environment
+- [ ] `/remote-setup` — Remote setup configuration
+- [x] `/rename` — Rename current conversation
+- [ ] `/resume` — Resume a previous conversation
+- [ ] `/rewind` — Restore code/conversation to a previous point
+- [ ] `/sandbox-toggle` — Toggle sandbox mode
+- [ ] `/skills` — List available skills
+- [x] `/stats` — Usage statistics and activity
+- [ ] `/stickers` — Order stickers
+- [x] `/tag` — Toggle a searchable tag on the session
+- [ ] `/theme` — Change the theme
+- [ ] `/upgrade` — Upgrade to Max
+- [ ] `/vim` — Toggle Vim/Normal editing modes
+- [ ] `/voice` — Toggle voice mode
+- [ ] Feature-gated: `/buddy`, `/fork`, `/peers`, `/proactive`, `/torch`, `/workflows` (full), etc.
+- [ ] Internal: `/backfill-sessions`, `/break-cache`, `/bughunter`, `/commit`, `/commit-push-pr`, `/init-verifiers`, `/mock-limits`, `/version`, `/ultraplan`, `/autofix-pr`, etc.
 
 ## 6. Built-in Tools
 
-Done:
+### Tools implemented in Python (58 tools):
 
 - [x] `list_dir`
 - [x] `read_file`
 - [x] `write_file`
 - [x] `edit_file`
+- [x] `notebook_edit`
 - [x] `glob_search`
 - [x] `grep_search`
 - [x] `bash`
@@ -304,7 +375,9 @@ Done:
 - [x] `account_list_profiles`
 - [x] `account_login`
 - [x] `account_logout`
-- [x] `notebook_edit`
+- [x] `config_list`
+- [x] `config_get`
+- [x] `config_set`
 - [x] `mcp_list_resources`
 - [x] `mcp_read_resource`
 - [x] `mcp_list_tools`
@@ -313,13 +386,16 @@ Done:
 - [x] `remote_list_profiles`
 - [x] `remote_connect`
 - [x] `remote_disconnect`
-- [x] `config_list`
-- [x] `config_get`
-- [x] `config_set`
+- [x] `worktree_status`
+- [x] `worktree_enter`
+- [x] `worktree_exit`
+- [x] `workflow_list`
+- [x] `workflow_get`
+- [x] `workflow_run`
+- [x] `remote_trigger`
 - [x] `plan_get`
 - [x] `update_plan`
 - [x] `plan_clear`
-- [x] `delegate_agent`
 - [x] `task_next`
 - [x] `task_list`
 - [x] `task_get`
@@ -330,37 +406,53 @@ Done:
 - [x] `task_block`
 - [x] `task_cancel`
 - [x] `todo_write`
+- [x] `delegate_agent`
 - [x] `team_list`
 - [x] `team_get`
 - [x] `team_create`
 - [x] `team_delete`
 - [x] `send_message`
 - [x] `team_messages`
-- [x] `workflow_list`
-- [x] `workflow_get`
-- [x] `workflow_run`
-- [x] `remote_trigger`
-- [x] `worktree_status`
-- [x] `worktree_enter`
-- [x] `worktree_exit`
 
-Missing:
+### Tools in npm `tools.ts` not yet ported with full fidelity (40 tool dirs):
 
-- [ ] Agent spawning tool parity beyond the current `delegate_agent` runtime tool
-- [ ] Skill tool
-- [ ] Web fetch parity beyond the current local text-fetch implementation
-- [ ] Web search parity beyond the current provider-backed implementation
-- [ ] LSP tool
-- [ ] Tool search parity beyond the current local registry search
-- [ ] Config tool
-- [ ] Terminal capture tool
-- [ ] Browser tool
-- [x] Workflow tool
-- [x] Remote trigger tool
-- [ ] Sleep / cron tools beyond the current local `sleep` tool
-- [ ] PowerShell tool parity
-- [x] Worktree enter/exit tools
-- [ ] Full `tools.ts` parity
+Core tools needing full port:
+- [ ] `AgentTool` — Sub-agent spawning with built-in agents (explore, general-purpose, verification, plan, claudeCodeGuide, statusline), fork support, agent memory/snapshots, resume agent, color management
+- [ ] `SkillTool` — Skill execution with bundled skills
+- [ ] `BriefTool` — Brief mode with attachments and file upload
+- [ ] `LSPTool` — Language Server Protocol (diagnostics, go-to-definition, references, hover, symbol search, formatting)
+- [ ] `PowerShellTool` — Full PowerShell execution with security, path validation, CLM types, git safety
+- [ ] `REPLTool` — Interactive REPL with primitive tools (ant-only)
+- [ ] `MCPTool` — Full MCP tool execution with collapse classification
+- [ ] `McpAuthTool` — MCP authentication handling
+- [ ] `ConfigTool` — Full config management with supported settings list
+- [ ] `SyntheticOutputTool` — Synthetic output injection
+- [ ] `EnterPlanModeTool` — Enter plan mode with UI
+- [ ] `ExitPlanModeTool` — Exit plan mode with V2 flow
+- [ ] `EnterWorktreeTool` — Full worktree enter with UI
+- [ ] `ExitWorktreeTool` — Full worktree exit with UI
+- [ ] `TaskOutputTool` — Task output display
+- [ ] `TaskStopTool` — Stop a running task
+
+Feature-gated tools:
+- [ ] `CronCreateTool` / `CronDeleteTool` / `CronListTool` — Cron scheduling (AGENT_TRIGGERS)
+- [ ] `RemoteTriggerTool` — Full remote triggers with UI (AGENT_TRIGGERS_REMOTE)
+- [ ] `MonitorTool` — MCP server monitoring (MONITOR_TOOL)
+- [ ] `SendUserFileTool` — Send file to user (KAIROS)
+- [ ] `PushNotificationTool` — Push notifications (KAIROS)
+- [ ] `SubscribePRTool` — PR subscription (KAIROS_GITHUB_WEBHOOKS)
+- [ ] `SuggestBackgroundPRTool` — Background PR (ant-only)
+- [ ] `VerifyPlanExecutionTool` — Plan verification
+- [ ] `TungstenTool` — Tungsten tool
+- [ ] `WebBrowserTool` — Full web browser
+- [ ] `TerminalCaptureTool` — Terminal capture
+- [ ] `SnipTool` — Force history snipping
+- [ ] `ListPeersTool` — List peers (UDS_INBOX)
+- [ ] `EmbeddedSearchTool` — Embedded search
+- [ ] `CtxInspectTool` — Context inspection
+- [ ] `WorkflowTool` — Workflow scripts (WORKFLOW_SCRIPTS)
+
+Note: Python has basic tool execution for `bash`, `read_file`, etc., but lacks per-tool UI components, prompt files, constants, and deep security validations (e.g., BashTool has 15 supporting files in npm).
 
 ## 7. Commands And Task Systems
 
@@ -383,13 +475,17 @@ Done:
 
 Missing:
 
-- [ ] Real implementation of the larger upstream command tree
+- [ ] Real implementation of the larger upstream command tree (80+ commands)
+- [ ] Task types: `LocalShellTask`, `LocalAgentTask`, `RemoteAgentTask`, `DreamTask`, `LocalWorkflowTask`, `MonitorMcpTask`, `InProcessTeammateTask`
+- [ ] Task stall detection (45s threshold) and prompt detection for interactive input
+- [ ] Remote agent task session URL tracking and completion checkers
+- [ ] Dream/auto-consolidation task with file tracking and turn history
 - [ ] Task orchestration system beyond the current local dependency-aware task runtime
 - [ ] Planner / task execution parity beyond the current local plan persistence, sync, and next-task flow
 - [ ] Team / collaboration command flows beyond the current local team runtime and message recording flows
 - [ ] Command-specific session behaviors
-- [ ] Full `src/commands/*` parity
-- [ ] Full `src/tasks/*` parity
+- [ ] Full `src/commands/*` parity (80+ command directories)
+- [ ] Full `src/tasks/*` parity (7 task types)
 
 ## 8. Permissions, Hooks, And Policy
 
@@ -410,9 +506,13 @@ Done:
 
 Missing:
 
-- [ ] Tool-permission workflow parity
+- [x] Full BashTool security: `bashSecurity.ts`, `sedValidation.ts`, `sedEditParser.ts`, `pathValidation.ts`, `readOnlyValidation.ts`, `modeValidation.ts`, `commandSemantics.ts`, `destructiveCommandWarning.ts`, `shouldUseSandbox.ts` → `src/bash_security.py` (18 validators, destructive warnings, command semantics, read-only detection, 163 tests)
+- [ ] Full PowerShellTool security: `powershellSecurity.ts`, `gitSafety.ts`, `clmTypes.ts`
+- [ ] Tool-permission workflow parity (`bashPermissions.ts`, `powershellPermissions.ts`)
 - [ ] Trust-gated initialization
-- [ ] Hook-config management
+- [ ] Hook-config management (`schemas/hooks.ts` with Zod schemas)
+- [ ] Policy limits service (`services/policyLimits/`)
+- [ ] Remote managed settings (`services/remoteManagedSettings/`)
 - [ ] Full hooks and policy parity
 
 ## 9. MCP, Plugins, And Skills
@@ -429,12 +529,13 @@ Done:
 
 Missing:
 
-- [ ] Full MCP-backed tool parity beyond the current stdio resource/tool list/read/call support
-- [ ] Plugin discovery and loading
-- [ ] Bundled plugin support
+- [ ] Full MCP service (`services/mcp/` — 25+ files: InProcessTransport, MCPConnectionManager, SdkControlTransport, auth, channelAllowlist, channelPermissions, client, config, elicitationHandler, envExpansion, normalization, oauthPort, officialRegistry, vscodeSdkMcp, xaa, xaaIdpLogin, etc.)
+- [ ] MCP server approval dialogs (`services/mcpServerApproval.tsx`)
+- [ ] Plugin discovery, loading, and installation (`services/plugins/PluginInstallationManager.ts`, `pluginCliCommands.ts`, `pluginOperations.ts`)
+- [ ] Bundled plugin support (`plugins/bundledPlugins.ts`, `plugins/bundled/`)
 - [ ] Plugin lifecycle management
 - [ ] Plugin update/cache behavior
-- [ ] Skill discovery and execution parity
+- [ ] Skill discovery and execution (`skills/bundledSkills.ts`, `skills/loadSkillsDir.ts`, `skills/mcpSkillBuilders.ts`, `skills/bundled/`)
 - [ ] Bundled skill support
 - [ ] Full plugin and skill parity
 
@@ -448,14 +549,22 @@ Done:
 
 Missing:
 
-- [ ] Interactive REPL parity beyond the current basic `agent-chat` loop
-- [ ] Ink/TUI component parity
-- [ ] Screen system parity
+- [ ] Interactive REPL parity (`screens/REPL.tsx`)
+- [ ] Ink/TUI framework (`ink/` — 40+ files: custom renderer, reconciler, DOM, layout engine, text wrapping, ANSI handling, focus management, selection)
+- [ ] Screen system (`screens/Doctor.tsx`, `screens/ResumeConversation.tsx`)
+- [ ] Component library (`components/` — 100+ components in 12+ subdirectories):
+  - Message rendering: Message, MessageRow, Messages, MessageSelector, MessageResponse
+  - Dialogs: ApproveApiKey, AutoModeOptIn, Bridge, CostThreshold, IdeAutoConnect, MCPServerApproval
+  - Settings: ThemePicker, LanguagePicker, ModelPicker, OutputStylePicker
+  - Search: GlobalSearchDialog, QuickOpenDialog, HistorySearchDialog
+  - Status: AgentProgressLine, BashModeProgress, MemoryUsageIndicator, TokenWarning
+  - Design system, agent, team, task, skill, memory, permissions, sandbox, shell components
 - [ ] Keyboard interaction parity
 - [ ] Interactive status panes
 - [ ] Approval UI flows
 - [ ] Rich incremental rendering
-- [ ] Full `components`, `screens`, and `ink` parity
+- [ ] Virtual scrolling
+- [ ] Copy-on-select behavior
 
 ## 11. Remote, Background, And Team Features
 
@@ -470,12 +579,12 @@ Done:
 
 Missing:
 
-- [ ] Real remote execution modes beyond the current local manifest-backed remote runtime and CLI/profile flows
-- [ ] Team runtime features
-- [ ] Team messaging features
+- [ ] Real remote session management (`remote/` — 4 files: RemoteSessionManager, SessionsWebSocket, remotePermissionBridge, sdkMessageAdapter)
+- [ ] Bridge subsystem (`bridge/` — 30+ files: bridgeMain, bridgeApi, bridgeConfig, bridgeMessaging, bridgePermissionCallbacks, replBridge, replBridgeHandle, replBridgeTransport, sessionRunner, trustedDevice, jwtUtils, capacityWake, inboundAttachments, inboundMessages, etc.)
+- [ ] Direct connect subsystem (`server/createDirectConnectSession.ts`, `directConnectManager.ts`)
+- [ ] Real team collaboration beyond local recording
 - [ ] Shared remote state
-- [ ] Upstream proxy runtime integration
-- [ ] Full `remote`, `server`, `bridge`, `upstreamproxy`, and team parity
+- [ ] Upstream proxy (`upstreamproxy/upstreamproxy.ts`, `upstreamproxy/relay.ts`)
 
 ## 12. Editor, Platform, And Native Integrations
 
@@ -485,14 +594,16 @@ Done:
 
 Missing:
 
-- [ ] Voice mode parity
-- [ ] VIM mode parity
-- [ ] Keybinding parity
-- [ ] Notification hooks
-- [ ] Native TypeScript / platform helper parity
-- [ ] JetBrains/editor integration parity
+- [ ] Voice mode (`voice/`, `services/voice.ts`, `services/voiceKeyterms.ts`, `services/voiceStreamSTT.ts`, hooks)
+- [ ] VIM mode (`vim/` — 5 files: motions, operators, textObjects, transitions, types)
+- [ ] Keybinding system (`keybindings/` — 13 files: defaultBindings, loadUserBindings, match, parser, resolver, schema, template, validate, etc.)
+- [ ] Notification hooks (`services/notifier.ts`, `services/preventSleep.ts`)
+- [ ] Native TypeScript / platform helpers (`native-ts/`)
+- [ ] JetBrains/editor integration (`utils/jetbrains.ts`, `utils/ide.ts`, `utils/idePathConversion.ts`)
 - [ ] Browser/native host integrations
+- [ ] IDE integration hooks (useIDEIntegration, useIdeAtMentioned, useIdeSelection, useIdeLogging, useDiffInIDE, useLspPluginRecommendation)
 - [ ] Platform-specific startup/shutdown logic
+- [ ] Chrome extension integration
 
 ## 13. Services And Internal Subsystems
 
@@ -503,62 +614,196 @@ Done:
 
 Missing:
 
-- [ ] Real service implementations for the mirrored `services` package
-- [ ] Config service parity
-- [ ] Account/auth service parity
-- [ ] Analytics/telemetry service parity
-- [ ] Growthbook/feature-flag parity
-- [ ] GitHub / git helper parity
-- [ ] Sandbox/settings utility parity
-- [ ] Todo/task utility parity
-- [ ] Internal helpers used by the upstream runtime
+- [ ] Analytics service (`services/analytics/` — 10+ files: config, Datadog, Growthbook, first-party event logger, sink, killswitch)
+- [ ] API service (`services/api/` — 20+ files: claude client, dumpPrompts, errorUtils, filesApi, firstTokenDate, grove, logging, metricsOptOut, promptCacheBreakDetection, sessionIngress, usage, withRetry, etc.)
+- [ ] LSP service (`services/lsp/` — 7 files: LSPClient, LSPDiagnosticRegistry, LSPServerInstance, LSPServerManager, config, manager, passiveFeedback)
+- [ ] Tools service (`services/tools/` — 4 files: StreamingToolExecutor, toolExecution, toolHooks, toolOrchestration)
+- [ ] Compact service (`services/compact/` — 6 files: compact, autoCompact, microCompact, apiMicrocompact, sessionMemoryCompact, compactWarningHook)
+- [ ] Auto-dream service (`services/autoDream/` — 4 files: autoDream, config, consolidationLock, consolidationPrompt)
+- [ ] Agent summary service (`services/AgentSummary/`)
+- [ ] Magic docs service (`services/MagicDocs/`)
+- [ ] Session memory service (`services/SessionMemory/`)
+- [ ] Prompt suggestion service (`services/PromptSuggestion/`)
+- [ ] Extract memories service (`services/extractMemories/`)
+- [ ] Diagnostic tracking service (`services/diagnosticTracking.ts`)
+- [ ] OAuth service (`services/oauth/` — 5 files)
+- [ ] Rate limiting (`services/claudeAiLimits.ts`, `services/rateLimitMessages.ts`, etc.)
+- [ ] Settings sync (`services/settingsSync/`)
+- [ ] Tips service (`services/tips/`)
+- [ ] Tool use summary service (`services/toolUseSummary/`)
+- [ ] VCR playback (`services/vcr.ts`)
+- [ ] Internal/container logging (`services/internalLogging.ts`)
+- [ ] Plugin installation management (`services/plugins/`)
 
-## 14. Mirrored Workspace Versus Working Runtime
+## 14. State Management
 
-Working Python runtime today:
+Done:
 
-- [x] `src/main.py`
-- [x] `src/agent_runtime.py`
-- [x] `src/agent_tools.py`
-- [x] `src/agent_prompting.py`
-- [x] `src/agent_context.py`
-- [x] `src/agent_context_usage.py`
-- [x] `src/agent_session.py`
-- [x] `src/agent_slash_commands.py`
-- [x] `src/account_runtime.py`
-- [x] `src/config_runtime.py`
-- [x] `src/agent_types.py`
-- [x] `src/mcp_runtime.py`
-- [x] `src/plan_runtime.py`
-- [x] `src/plugin_runtime.py`
-- [x] `src/remote_runtime.py`
-- [x] `src/search_runtime.py`
-- [x] `src/hook_policy.py`
-- [x] `src/background_runtime.py`
-- [x] `src/task.py`
-- [x] `src/task_runtime.py`
-- [x] `src/tokenizer_runtime.py`
-- [x] `src/openai_compat.py`
-- [x] `src/session_store.py`
-- [x] `src/permissions.py`
+- [x] Session state via `AgentSessionState` dataclass
+- [x] Basic session persistence
 
-Mirrored inventory / scaffold areas that still need real implementation work:
+Missing:
 
-- [ ] `src/commands.py`
-- [ ] `src/tools.py`
-- [ ] `src/query_engine.py`
-- [ ] `src/runtime.py`
-- [ ] Remaining mirrored inventory surfaces still represented mainly by snapshot data under `src/reference_data/*`
-- [ ] Command/task/plugin/skill/service/editor subsystems that exist upstream but do not yet have real Python modules after the tree cleanup
+- [ ] Zustand store (`state/AppStateStore.ts`, `state/store.ts`)
+- [ ] Store selectors (`state/selectors.ts`)
+- [ ] State change callbacks (`state/onChangeAppState.ts`)
+- [ ] React context providers (`state/AppState.tsx`)
 
-## 15. High-Priority Next Steps
+## 15. React Hooks (84+ hooks in `src/hooks/`)
 
-- [ ] Expand the real Python tool registry toward upstream `tools.ts`
-- [ ] Replace more snapshot-backed mirrored modules with working runtime code
-- [ ] Expand MCP parity beyond the current stdio resource/tool transport support
-- [ ] Expand hooks and policy parity beyond the current manifest/runtime implementation
-- [ ] Build a real interactive REPL / TUI
-- [ ] Expand background session parity beyond the current local worker/log/attach model
-- [ ] Add real remote session transport and shared remote state beyond the current local remote-profile runtime
-- [ ] Port more of the command/task system
-- [ ] Close the gap between the mirrored workspace and the working runtime
+Not applicable for Python (no React TUI), but these represent features needing alternative implementations:
+
+- [ ] File suggestions and unified suggestions
+- [ ] Remote session / SSH / direct connect hooks
+- [ ] Input buffer, text input, vim input, typeahead, search input, paste handling
+- [ ] Arrow key history, history search, background task navigation
+- [ ] Main loop model selection, assistant history, merged clients/commands/tools
+- [ ] Tool permission checking, cancel request, manage plugins
+- [ ] Global/command keybindings, exit handling, double-press detection
+- [ ] Terminal size, virtual scroll, copy-on-select
+- [ ] Voice recording, voice integration
+- [ ] IDE integration, @mention, selection, diff-in-IDE
+- [ ] Settings management, dynamic config
+- [ ] Timeout, elapsed time, scheduled tasks, delayed notifications
+- [ ] Prompt suggestion, update notification, feature hints
+- [ ] Queue processor, command queue
+- [ ] Memory usage, away summary, teleport resume
+- [ ] Diff data, turn diffs
+- [ ] Task list watcher, tasks v2, PR status
+- [ ] Session backgrounding, swarm initialization/permission
+- [ ] API key verification, mailbox bridge, inbox poller
+
+## 16. Utilities (200+ files in `src/utils/`)
+
+Done:
+
+- [x] Basic file operations in tool implementations
+- [x] Basic git status snapshot
+- [x] Basic shell/subprocess handling
+
+Missing major utility categories:
+
+- [ ] Shell utilities (`utils/bash/`, `utils/shell/`, `Shell.ts`, `ShellCommand.ts`)
+- [ ] Git operations (`utils/git.ts`, `utils/gitDiff.ts`, `utils/gitSettings.ts`, `utils/commitAttribution.ts`)
+- [ ] File operations (`utils/file.ts`, `utils/fileRead.ts`, `utils/fileHistory.ts`, `utils/fileStateCache.ts`, `utils/fsOperations.ts`, `utils/ripgrep.ts`, `utils/glob.ts`)
+- [ ] AI/Model utilities (`utils/modelCost.ts`, `utils/model/`, `utils/context.ts`, `utils/queryContext.ts`)
+- [ ] Config/Settings (`utils/config.ts`, `utils/settings/`)
+- [ ] Message handling (`utils/messages.ts`, `utils/messages/`, `utils/messageQueueManager.ts`)
+- [ ] API/Network (`utils/api.ts`, `utils/http.ts`, `utils/proxy.ts`, `utils/auth.ts`)
+- [ ] Session management (`utils/sessionStorage.ts`, `utils/sessionState.ts`, `utils/sessionStart.ts`, `utils/sessionRestore.ts`)
+- [ ] Plugin/Skill utilities (`utils/plugins/`, `utils/skills/`)
+- [ ] Memory/Context (`utils/memory/`, `utils/claudemd.ts`, `utils/contextAnalysis.ts`)
+- [ ] IDE integration (`utils/ide.ts`, `utils/jetbrains.ts`)
+- [ ] Platform/OS (`utils/platform.ts`, `utils/terminal.ts`, `utils/systemDirectories.ts`)
+- [ ] Debugging (`utils/debug.ts`, `utils/diagLogs.ts`, `utils/log.ts`, `utils/profilerBase.ts`)
+- [ ] Telemetry (`utils/telemetry/`)
+- [ ] Deep link utilities (`utils/deepLink/`)
+
+## 17. Coordinator And Buddy
+
+Missing:
+
+- [ ] Coordinator mode (`coordinator/coordinatorMode.ts` — agent tool filtering and async agent allowlist)
+- [ ] Buddy/companion system (`buddy/` — 6 files: CompanionSprite, companion procedural generation, personality prompts, sprites, types, notification UI)
+
+## 18. Migrations
+
+Missing:
+
+- [ ] Data/config migration system (`migrations/` — 11 migration scripts):
+  - Model migrations: migrateFennecToOpus, migrateLegacyOpusToCurrent, migrateOpusToOpus1m, migrateSonnet1mToSonnet45, migrateSonnet45ToSonnet46
+  - Feature migrations: migrateAutoUpdatesToSettings, migrateBypassPermissionsAcceptedToSettings, migrateEnableAllProjectMcpServersToSettings, migrateReplBridgeEnabledToRemoteControlAtStartup
+  - Config resets: resetAutoModeOptInForDefaultOffer, resetProToOpusDefault
+
+## 19. Type Definitions
+
+Missing:
+
+- [ ] Full type system from `types/` (command.ts, hooks.ts, ids.ts, logs.ts, permissions.ts, plugin.ts, textInputTypes.ts, generated/)
+
+## 20. Mirrored Workspace Versus Working Runtime
+
+Working Python runtime today (21,193 lines across 51 source files, 10,480 lines across 37 test files):
+
+- [x] `src/main.py` (1,353 lines)
+- [x] `src/agent_runtime.py` (3,664 lines)
+- [x] `src/agent_tools.py` (2,994 lines)
+- [x] `src/agent_prompting.py` (390 lines)
+- [x] `src/agent_context.py` (459 lines)
+- [x] `src/agent_context_usage.py` (356 lines)
+- [x] `src/agent_session.py` (718 lines)
+- [x] `src/agent_slash_commands.py` (633 lines)
+- [x] `src/agent_manager.py` (296 lines)
+- [x] `src/agent_plugin_cache.py` (154 lines)
+- [x] `src/agent_types.py` (193 lines)
+- [x] `src/account_runtime.py` (470 lines)
+- [x] `src/ask_user_runtime.py` (320 lines)
+- [x] `src/background_runtime.py` (371 lines)
+- [x] `src/config_runtime.py` (296 lines)
+- [x] `src/hook_policy.py` (339 lines)
+- [x] `src/mcp_runtime.py` (880 lines)
+- [x] `src/openai_compat.py` (413 lines)
+- [x] `src/permissions.py` (20 lines)
+- [x] `src/plan_runtime.py` (396 lines)
+- [x] `src/plugin_runtime.py` (654 lines)
+- [x] `src/query_engine.py` (655 lines)
+- [x] `src/remote_runtime.py` (571 lines)
+- [x] `src/remote_trigger_runtime.py` (371 lines)
+- [x] `src/search_runtime.py` (606 lines)
+- [x] `src/session_store.py` (295 lines)
+- [x] `src/task.py` (130 lines)
+- [x] `src/task_runtime.py` (595 lines)
+- [x] `src/team_runtime.py` (386 lines)
+- [x] `src/tokenizer_runtime.py` (202 lines)
+- [x] `src/workflow_runtime.py` (319 lines)
+- [x] `src/worktree_runtime.py` (448 lines)
+- [x] Plus 19 supporting modules
+
+Mirrored / scaffold areas needing real implementation:
+
+- [ ] `src/commands.py` — currently minimal dispatch, needs full command tree
+- [ ] `src/tools.py` — reference-data based tool loading, needs real per-tool implementations
+- [ ] `src/query_engine.py` — facade layer, needs full QueryEngine.ts parity
+- [ ] `src/runtime.py` — routing layer, needs full runtime parity
+- [ ] Remaining inventory surfaces under `src/reference_data/*`
+
+---
+
+## High-Priority Next Steps
+
+### Tier 1 — Core Feature Gaps (highest user impact)
+- [x] Full BashTool security parity (sed validation, path validation, sandbox, destructive command warnings, command semantics) → `src/bash_security.py`
+- [ ] LSP tool integration for code intelligence
+- [ ] Full AgentTool with built-in agent types (explore, general-purpose, verification, plan)
+- [ ] Auto-compact and context collapse from `query.ts`
+- [ ] Full compact service (autoCompact, microCompact, sessionMemoryCompact)
+- [ ] Interactive REPL improvements
+
+### Tier 2 — Important Feature Gaps
+- [ ] SkillTool with bundled skills
+- [ ] Full MCP service parity (auth, permissions, config, registry)
+- [ ] Plugin discovery, loading, and installation
+- [ ] Real remote session management (WebSocket, bridge)
+- [ ] Full command tree implementation (80+ commands)
+- [ ] Migration system for config/model upgrades
+- [ ] Token budget calculations
+
+### Tier 3 — Nice-to-Have Features
+- [ ] TUI/Ink component library
+- [ ] Voice mode
+- [ ] VIM mode and keybinding system
+- [ ] IDE integrations (JetBrains, VS Code)
+- [ ] Chrome extension integration
+- [ ] Buddy/companion system
+- [ ] Analytics/telemetry
+- [ ] Coordinator mode
+- [ ] Feature flag system (Growthbook)
+
+### Tier 4 — Platform/Enterprise Features
+- [ ] Full bridge subsystem (30+ files)
+- [ ] Upstream proxy
+- [ ] Direct connect server
+- [ ] OAuth service
+- [ ] Settings sync
+- [ ] Rate limiting and policy limits
+- [ ] Dream/auto-consolidation service
