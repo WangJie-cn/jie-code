@@ -32,3 +32,5 @@ humaneval_results.json
 
 test_cases
 e-commerce
+benchmarks/data/*.jsonl
+benchmarks/data/manifest.json
