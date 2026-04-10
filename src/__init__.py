@@ -18,6 +18,7 @@ from .agent_types import AgentPermissions, AgentRunResult, AgentRuntimeConfig, M
 from .background_runtime import BackgroundSessionRuntime
 from .commands import PORTED_COMMANDS, build_command_backlog
 from .config_runtime import ConfigMutation, ConfigRuntime
+from .lsp_runtime import LSPCallEdge, LSPDiagnostic, LSPReference, LSPRuntime, LSPSymbol
 from .mcp_runtime import MCPRuntime, MCPResource, MCPServerProfile, MCPTool
 from .parity_audit import ParityAuditResult, run_parity_audit
 from .plan_runtime import PlanRuntime, PlanStep
@@ -32,6 +33,7 @@ from .system_init import build_system_init_message
 from .task import PortingTask
 from .task_runtime import TaskRuntime
 from .team_runtime import TeamDefinition, TeamMessage, TeamRuntime
+from .token_budget import TokenBudgetSnapshot, calculate_token_budget, estimate_chat_overhead, format_token_budget
 from .tokenizer_runtime import TokenCounterInfo, clear_token_counter_cache, count_tokens, describe_token_counter
 from .workflow_runtime import WorkflowDefinition, WorkflowRunRecord, WorkflowRuntime
 from .worktree_runtime import WorktreeRuntime, WorktreeSessionState, WorktreeStatusReport
@@ -54,6 +56,11 @@ __all__ = [
     'BackgroundSessionRuntime',
     'ConfigMutation',
     'ConfigRuntime',
+    'LSPCallEdge',
+    'LSPDiagnostic',
+    'LSPReference',
+    'LSPRuntime',
+    'LSPSymbol',
     'LocalCodingAgent',
     'MCPResource',
     'MCPRuntime',
@@ -82,6 +89,7 @@ __all__ = [
     'TeamDefinition',
     'TeamMessage',
     'TeamRuntime',
+    'TokenBudgetSnapshot',
     'TokenCounterInfo',
     'TurnResult',
     'WorkflowDefinition',
@@ -101,9 +109,12 @@ __all__ = [
     'clear_context_caches',
     'clear_token_counter_cache',
     'count_tokens',
+    'calculate_token_budget',
     'default_tool_registry',
     'describe_token_counter',
+    'estimate_chat_overhead',
     'execute_tool',
+    'format_token_budget',
     'get_system_context',
     'get_user_context',
     'load_session',

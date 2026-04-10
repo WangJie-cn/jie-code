@@ -6,6 +6,7 @@ from pathlib import Path
 
 from src.agent_tools import build_tool_context, default_tool_registry, execute_tool
 from src.agent_types import AgentPermissions, AgentRuntimeConfig
+from src.lsp_runtime import LSPRuntime
 
 
 class ExtendedToolTests(unittest.TestCase):
@@ -101,3 +102,38 @@ class ExtendedToolTests(unittest.TestCase):
         self.assertIn('updated notebook cell 0', result.content)
         self.assertIn('print(2)', updated)
         self.assertEqual(result.metadata.get('action'), 'notebook_edit')
+
+    def test_lsp_tool_returns_definition_report(self) -> None:
+        registry = default_tool_registry()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workspace = Path(tmp_dir)
+            (workspace / 'sample.py').write_text(
+                'def helper(value):\n'
+                '    return value * 2\n'
+                '\n'
+                'def run(item):\n'
+                '    return helper(item)\n',
+                encoding='utf-8',
+            )
+            context = build_tool_context(
+                AgentRuntimeConfig(cwd=workspace),
+                tool_registry=registry,
+                lsp_runtime=LSPRuntime.from_workspace(workspace),
+            )
+            result = execute_tool(
+                registry,
+                'LSP',
+                {
+                    'operation': 'goToDefinition',
+                    'file_path': 'sample.py',
+                    'line': 5,
+                    'character': 12,
+                },
+                context,
+            )
+
+        self.assertTrue(result.ok)
+        self.assertIn('# LSP Definition', result.content)
+        self.assertIn('function helper', result.content)
+        self.assertEqual(result.metadata.get('action'), 'lsp_query')
+        self.assertEqual(result.metadata.get('operation'), 'goToDefinition')

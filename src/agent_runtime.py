@@ -12,9 +12,11 @@ from .agent_manager import AgentManager
 from .agent_context import clear_context_caches
 from .agent_context import render_context_report as render_agent_context_report
 from .agent_context_usage import collect_context_usage, estimate_tokens, format_context_usage
+from .compact import compact_conversation
 from .ask_user_runtime import AskUserRuntime
 from .config_runtime import ConfigRuntime
 from .hook_policy import HookPolicyRuntime
+from .lsp_runtime import LSPRuntime
 from .mcp_runtime import MCPRuntime
 from .agent_prompting import (
     build_prompt_context,
@@ -62,11 +64,20 @@ from .session_store import (
     serialize_runtime_config,
     usage_from_payload,
 )
+from .token_budget import calculate_token_budget, format_token_budget
 
 
 @dataclass(frozen=True)
 class BudgetDecision:
     exceeded: bool
+    reason: str | None = None
+
+
+@dataclass(frozen=True)
+class PromptPreflightResult:
+    usage_increment: UsageStats = field(default_factory=UsageStats)
+    model_calls_increment: int = 0
+    stop_reason: str | None = None
     reason: str | None = None
 
 
@@ -92,6 +103,7 @@ class LocalCodingAgent:
     account_runtime: AccountRuntime | None = None
     ask_user_runtime: AskUserRuntime | None = None
     config_runtime: ConfigRuntime | None = None
+    lsp_runtime: LSPRuntime | None = None
     plan_runtime: PlanRuntime | None = None
     task_runtime: TaskRuntime | None = None
     team_runtime: TeamRuntime | None = None
@@ -153,6 +165,11 @@ class LocalCodingAgent:
             )
         if self.config_runtime is None:
             self.config_runtime = ConfigRuntime.from_workspace(self.runtime_config.cwd)
+        if self.lsp_runtime is None:
+            self.lsp_runtime = LSPRuntime.from_workspace(
+                self.runtime_config.cwd,
+                tuple(str(path) for path in self.runtime_config.additional_working_directories),
+            )
         if self.plan_runtime is None:
             self.plan_runtime = PlanRuntime.from_workspace(self.runtime_config.cwd)
         if self.task_runtime is None:
@@ -191,6 +208,7 @@ class LocalCodingAgent:
             account_runtime=self.account_runtime,
             ask_user_runtime=self.ask_user_runtime,
             config_runtime=self.config_runtime,
+            lsp_runtime=self.lsp_runtime,
             mcp_runtime=self.mcp_runtime,
             remote_runtime=self.remote_runtime,
             remote_trigger_runtime=self.remote_trigger_runtime,
@@ -489,6 +507,69 @@ class LocalCodingAgent:
                 stream_events,
                 turn_index=turn_index,
             )
+            preflight = self._preflight_prompt_length(
+                session,
+                stream_events,
+                turn_index=turn_index,
+            )
+            if preflight.usage_increment.total_tokens or preflight.model_calls_increment:
+                total_usage = total_usage + preflight.usage_increment
+                total_cost_usd = self.model_config.pricing.estimate_cost_usd(total_usage)
+                model_calls += preflight.model_calls_increment
+                budget_after_preflight = self._check_budget(
+                    total_usage,
+                    total_cost_usd,
+                    tool_calls=tool_calls,
+                    delegated_tasks=delegated_tasks,
+                    model_calls=model_calls,
+                    session_turns=starting_session_turns + turn_index,
+                )
+                if budget_after_preflight.exceeded:
+                    result = AgentRunResult(
+                        final_output=(
+                            budget_after_preflight.reason
+                            or 'Stopped because the runtime budget was exceeded.'
+                        ),
+                        turns=turn_index,
+                        tool_calls=tool_calls,
+                        transcript=session.transcript(),
+                        events=tuple(stream_events),
+                        usage=total_usage,
+                        total_cost_usd=total_cost_usd,
+                        stop_reason='budget_exceeded',
+                        file_history=tuple(file_history),
+                        session_id=session_id,
+                        scratchpad_directory=(
+                            str(scratchpad_directory) if scratchpad_directory is not None else None
+                        ),
+                    )
+                    result = self._persist_session(session, result)
+                    self.last_run_result = result
+                    return result
+            if preflight.stop_reason is not None:
+                result = AgentRunResult(
+                    final_output=preflight.reason or 'Stopped before the next model call.',
+                    turns=max(turn_index - 1, 0),
+                    tool_calls=tool_calls,
+                    transcript=session.transcript(),
+                    events=tuple(stream_events),
+                    usage=total_usage,
+                    total_cost_usd=total_cost_usd,
+                    stop_reason=preflight.stop_reason,
+                    file_history=tuple(file_history),
+                    session_id=session_id,
+                    scratchpad_directory=(
+                        str(scratchpad_directory) if scratchpad_directory is not None else None
+                    ),
+                )
+                result = self._append_runtime_after_turn_events(
+                    result,
+                    prompt=effective_prompt,
+                    turn_index=max(turn_index - 1, 0),
+                )
+                result = self._persist_session(session, result)
+                self.last_run_result = result
+                return result
             try:
                 turn, turn_events = self._query_model(session, tool_specs)
             except OpenAICompatError as exc:
@@ -1219,6 +1300,162 @@ class LocalCodingAgent:
                 ),
             )
         return BudgetDecision(exceeded=False)
+
+    def _preflight_prompt_length(
+        self,
+        session: AgentSessionState,
+        stream_events: list[dict[str, object]],
+        *,
+        turn_index: int,
+    ) -> PromptPreflightResult:
+        snapshot = calculate_token_budget(
+            session=session,
+            model=self.model_config.model,
+            budget_config=self.runtime_config.budget_config,
+            output_schema=self.runtime_config.output_schema,
+        )
+        if not snapshot.exceeds_soft_limit and not snapshot.exceeds_hard_limit:
+            return PromptPreflightResult()
+
+        stream_events.append(
+            {
+                'type': 'prompt_length_check',
+                'turn_index': turn_index,
+                'projected_input_tokens': snapshot.projected_input_tokens,
+                'soft_input_limit_tokens': snapshot.soft_input_limit_tokens,
+                'hard_input_limit_tokens': snapshot.hard_input_limit_tokens,
+                'soft_overflow_tokens': snapshot.soft_overflow_tokens,
+                'overflow_tokens': snapshot.overflow_tokens,
+                'exceeds_hard_limit': snapshot.exceeds_hard_limit,
+            }
+        )
+
+        target_tokens = snapshot.soft_input_limit_tokens
+        if snapshot.exceeds_hard_limit:
+            target_tokens = snapshot.hard_input_limit_tokens
+        if target_tokens < 0:
+            target_tokens = 0
+
+        if self._reduce_context_pressure(
+            session,
+            stream_events,
+            turn_index=turn_index,
+            target_tokens=target_tokens,
+            allow_compaction=True,
+        ):
+            recovered = calculate_token_budget(
+                session=session,
+                model=self.model_config.model,
+                budget_config=self.runtime_config.budget_config,
+                output_schema=self.runtime_config.output_schema,
+            )
+            stream_events.append(
+                {
+                    'type': 'prompt_length_recovery',
+                    'turn_index': turn_index,
+                    'strategy': 'heuristic',
+                    'projected_input_tokens': recovered.projected_input_tokens,
+                    'soft_input_limit_tokens': recovered.soft_input_limit_tokens,
+                    'hard_input_limit_tokens': recovered.hard_input_limit_tokens,
+                    'exceeds_hard_limit': recovered.exceeds_hard_limit,
+                    'exceeds_soft_limit': recovered.exceeds_soft_limit,
+                }
+            )
+            if not recovered.exceeds_soft_limit and not recovered.exceeds_hard_limit:
+                return PromptPreflightResult()
+            snapshot = recovered
+
+        if self._can_auto_compact_with_summary(session):
+            compact_result = compact_conversation(
+                self,
+                custom_instructions=(
+                    'Automatically collapse earlier conversation context to fit the next model '
+                    'turn. Preserve the active task, recent file changes, failures, pending work, '
+                    'and exact next step.'
+                ),
+            )
+            if compact_result.error is None:
+                recovered = calculate_token_budget(
+                    session=session,
+                    model=self.model_config.model,
+                    budget_config=self.runtime_config.budget_config,
+                    output_schema=self.runtime_config.output_schema,
+                )
+                stream_events.append(
+                    {
+                        'type': 'auto_compact_summary',
+                        'turn_index': turn_index,
+                        'pre_compact_token_count': compact_result.pre_compact_token_count,
+                        'post_compact_token_count': compact_result.post_compact_token_count,
+                        'summary_usage_tokens': compact_result.usage.total_tokens,
+                        'projected_input_tokens': recovered.projected_input_tokens,
+                        'soft_input_limit_tokens': recovered.soft_input_limit_tokens,
+                        'hard_input_limit_tokens': recovered.hard_input_limit_tokens,
+                        'exceeds_hard_limit': recovered.exceeds_hard_limit,
+                        'exceeds_soft_limit': recovered.exceeds_soft_limit,
+                    }
+                )
+                if not recovered.exceeds_soft_limit and not recovered.exceeds_hard_limit:
+                    return PromptPreflightResult(
+                        usage_increment=compact_result.usage,
+                        model_calls_increment=1,
+                    )
+                snapshot = recovered
+                if compact_result.usage.total_tokens:
+                    return PromptPreflightResult(
+                        usage_increment=compact_result.usage,
+                        model_calls_increment=1,
+                        stop_reason=(
+                            'prompt_too_long'
+                            if recovered.exceeds_hard_limit
+                            else None
+                        ),
+                        reason=(
+                            self._build_prompt_length_error(recovered)
+                            if recovered.exceeds_hard_limit
+                            else None
+                        ),
+                    )
+            else:
+                stream_events.append(
+                    {
+                        'type': 'auto_compact_failed',
+                        'turn_index': turn_index,
+                        'reason': compact_result.error,
+                    }
+                )
+
+        if snapshot.exceeds_hard_limit:
+            return PromptPreflightResult(
+                stop_reason='prompt_too_long',
+                reason=self._build_prompt_length_error(snapshot),
+            )
+
+        stream_events.append(
+            {
+                'type': 'prompt_length_warning',
+                'turn_index': turn_index,
+                'projected_input_tokens': snapshot.projected_input_tokens,
+                'soft_input_limit_tokens': snapshot.soft_input_limit_tokens,
+                'hard_input_limit_tokens': snapshot.hard_input_limit_tokens,
+                'soft_overflow_tokens': snapshot.soft_overflow_tokens,
+            }
+        )
+        return PromptPreflightResult()
+
+    def _can_auto_compact_with_summary(self, session: AgentSessionState) -> bool:
+        prefix_count = self._compact_prefix_count(session)
+        preserve_count = max(self.runtime_config.compact_preserve_messages, 1)
+        return len(session.messages) - prefix_count > preserve_count
+
+    def _build_prompt_length_error(self, snapshot) -> str:
+        return (
+            'Stopped before the next model call because the prompt would exceed the '
+            'effective input budget. '
+            f'Projected prompt tokens: {snapshot.projected_input_tokens:,}; '
+            f'hard input limit: {snapshot.hard_input_limit_tokens:,}; '
+            f'soft input limit: {snapshot.soft_input_limit_tokens:,}.'
+        )
 
     def _snip_session_if_needed(
         self,
@@ -2991,6 +3228,138 @@ class LocalCodingAgent:
             return '# Config\n\nNo local config runtime is available.'
         return '\n'.join(['# Config', '', self.config_runtime.render_summary()])
 
+    def render_lsp_report(self) -> str:
+        if self.lsp_runtime is None or not self.lsp_runtime.has_lsp_support():
+            return '# LSP\n\nNo local LSP runtime is available.'
+        return '\n'.join(['# LSP', '', self.lsp_runtime.render_summary()])
+
+    def render_lsp_document_symbols_report(self, file_path: str) -> str:
+        if self.lsp_runtime is None or not self.lsp_runtime.has_lsp_support():
+            return '# LSP Document Symbols\n\nNo local LSP runtime is available.'
+        try:
+            return self.lsp_runtime.render_document_symbols(file_path)
+        except KeyError as exc:
+            return f'# LSP Document Symbols\n\n{exc}'
+
+    def render_lsp_workspace_symbols_report(
+        self,
+        query: str,
+        *,
+        max_results: int = 50,
+    ) -> str:
+        if self.lsp_runtime is None or not self.lsp_runtime.has_lsp_support():
+            return '# LSP Workspace Symbols\n\nNo local LSP runtime is available.'
+        return self.lsp_runtime.render_workspace_symbols(query, max_results=max_results)
+
+    def render_lsp_definition_report(
+        self,
+        file_path: str,
+        line: int,
+        character: int,
+        *,
+        max_results: int = 20,
+    ) -> str:
+        if self.lsp_runtime is None or not self.lsp_runtime.has_lsp_support():
+            return '# LSP Definition\n\nNo local LSP runtime is available.'
+        try:
+            return self.lsp_runtime.render_definition(
+                file_path,
+                line,
+                character,
+                max_results=max_results,
+            )
+        except KeyError as exc:
+            return f'# LSP Definition\n\n{exc}'
+
+    def render_lsp_references_report(
+        self,
+        file_path: str,
+        line: int,
+        character: int,
+        *,
+        max_results: int = 50,
+    ) -> str:
+        if self.lsp_runtime is None or not self.lsp_runtime.has_lsp_support():
+            return '# LSP References\n\nNo local LSP runtime is available.'
+        try:
+            return self.lsp_runtime.render_references(
+                file_path,
+                line,
+                character,
+                max_results=max_results,
+            )
+        except KeyError as exc:
+            return f'# LSP References\n\n{exc}'
+
+    def render_lsp_hover_report(self, file_path: str, line: int, character: int) -> str:
+        if self.lsp_runtime is None or not self.lsp_runtime.has_lsp_support():
+            return '# LSP Hover\n\nNo local LSP runtime is available.'
+        try:
+            return self.lsp_runtime.render_hover(file_path, line, character)
+        except KeyError as exc:
+            return f'# LSP Hover\n\n{exc}'
+
+    def render_lsp_diagnostics_report(self, file_path: str | None = None) -> str:
+        if self.lsp_runtime is None or not self.lsp_runtime.has_lsp_support():
+            return '# LSP Diagnostics\n\nNo local LSP runtime is available.'
+        try:
+            return self.lsp_runtime.render_diagnostics(file_path)
+        except KeyError as exc:
+            return f'# LSP Diagnostics\n\n{exc}'
+
+    def render_lsp_prepare_call_hierarchy_report(
+        self,
+        file_path: str,
+        line: int,
+        character: int,
+    ) -> str:
+        if self.lsp_runtime is None or not self.lsp_runtime.has_lsp_support():
+            return '# LSP Call Hierarchy\n\nNo local LSP runtime is available.'
+        try:
+            return self.lsp_runtime.render_prepare_call_hierarchy(file_path, line, character)
+        except KeyError as exc:
+            return f'# LSP Call Hierarchy\n\n{exc}'
+
+    def render_lsp_incoming_calls_report(
+        self,
+        file_path: str,
+        line: int,
+        character: int,
+        *,
+        max_results: int = 50,
+    ) -> str:
+        if self.lsp_runtime is None or not self.lsp_runtime.has_lsp_support():
+            return '# LSP Incoming Calls\n\nNo local LSP runtime is available.'
+        try:
+            return self.lsp_runtime.render_incoming_calls(
+                file_path,
+                line,
+                character,
+                max_results=max_results,
+            )
+        except KeyError as exc:
+            return f'# LSP Incoming Calls\n\n{exc}'
+
+    def render_lsp_outgoing_calls_report(
+        self,
+        file_path: str,
+        line: int,
+        character: int,
+        *,
+        max_results: int = 50,
+    ) -> str:
+        if self.lsp_runtime is None or not self.lsp_runtime.has_lsp_support():
+            return '# LSP Outgoing Calls\n\nNo local LSP runtime is available.'
+        try:
+            return self.lsp_runtime.render_outgoing_calls(
+                file_path,
+                line,
+                character,
+                max_results=max_results,
+            )
+        except KeyError as exc:
+            return f'# LSP Outgoing Calls\n\n{exc}'
+
     def render_config_effective_report(self) -> str:
         if self.config_runtime is None:
             return '# Config Effective\n\nNo local config runtime is available.'
@@ -3287,6 +3656,19 @@ class LocalCodingAgent:
             f'- Session ID: {self.active_session_id or "none"}',
             f'- Last session loaded: {"yes" if self.last_session is not None else "no"}',
         ]
+        if self.last_session is not None:
+            token_budget = calculate_token_budget(
+                session=self.last_session,
+                model=self.model_config.model,
+                budget_config=self.runtime_config.budget_config,
+                output_schema=self.runtime_config.output_schema,
+            )
+            lines.append(
+                f'- Prompt budget: {token_budget.projected_input_tokens:,} / {token_budget.soft_input_limit_tokens:,} soft'
+            )
+            lines.append(
+                f'- Prompt hard limit: {token_budget.hard_input_limit_tokens:,}'
+            )
         if self.hook_policy_runtime is not None and self.hook_policy_runtime.manifests:
             lines.append(
                 f'- Workspace trust mode: {"trusted" if self.hook_policy_runtime.is_trusted() else "untrusted"}'
@@ -3325,6 +3707,10 @@ class LocalCodingAgent:
             lines.append(
                 f'- Effective config keys: {len(self.config_runtime.list_keys())}'
             )
+        if self.lsp_runtime is not None and self.lsp_runtime.has_lsp_support():
+            lines.append(
+                f'- LSP indexed files: {len(self.lsp_runtime._workspace_files())}'
+            )
         if self.plan_runtime is not None and self.plan_runtime.steps:
             lines.append(f'- Local plan steps: {len(self.plan_runtime.steps)}')
         if self.task_runtime is not None and self.task_runtime.tasks:
@@ -3352,6 +3738,16 @@ class LocalCodingAgent:
         if self.agent_manager is not None:
             lines.extend(self.agent_manager.summary_lines())
         return '\n'.join(lines)
+
+    def render_token_budget_report(self) -> str:
+        session = self.last_session or self.build_session()
+        snapshot = calculate_token_budget(
+            session=session,
+            model=self.model_config.model,
+            budget_config=self.runtime_config.budget_config,
+            output_schema=self.runtime_config.output_schema,
+        )
+        return format_token_budget(snapshot)
 
     def _finalize_managed_agent(self, result: AgentRunResult) -> None:
         if self.managed_agent_id is None or self.agent_manager is None:
@@ -3463,6 +3859,7 @@ class LocalCodingAgent:
             account_runtime=self.account_runtime,
             ask_user_runtime=self.ask_user_runtime,
             config_runtime=self.config_runtime,
+            lsp_runtime=self.lsp_runtime,
             remote_runtime=self.remote_runtime,
             remote_trigger_runtime=self.remote_trigger_runtime,
             plan_runtime=self.plan_runtime,
@@ -3514,6 +3911,10 @@ class LocalCodingAgent:
             additional_dirs,
         )
         self.config_runtime = ConfigRuntime.from_workspace(self.runtime_config.cwd)
+        self.lsp_runtime = LSPRuntime.from_workspace(
+            self.runtime_config.cwd,
+            additional_dirs,
+        )
         self.task_runtime = TaskRuntime.from_workspace(self.runtime_config.cwd)
         self.plan_runtime = PlanRuntime.from_workspace(self.runtime_config.cwd)
         self.team_runtime = TeamRuntime.from_workspace(
@@ -3547,6 +3948,7 @@ class LocalCodingAgent:
             account_runtime=self.account_runtime,
             ask_user_runtime=self.ask_user_runtime,
             config_runtime=self.config_runtime,
+            lsp_runtime=self.lsp_runtime,
             mcp_runtime=self.mcp_runtime,
             remote_runtime=self.remote_runtime,
             remote_trigger_runtime=self.remote_trigger_runtime,

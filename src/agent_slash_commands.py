@@ -110,6 +110,11 @@ def get_slash_command_specs() -> tuple[SlashCommandSpec, ...]:
             handler=_handle_context_raw,
         ),
         SlashCommandSpec(
+            names=('token-budget', 'budget'),
+            description='Show the current token-budget window, reserves, and prompt-length limits.',
+            handler=_handle_token_budget,
+        ),
+        SlashCommandSpec(
             names=('mcp',),
             description='Show discovered local MCP manifests and resource counts.',
             handler=_handle_mcp,
@@ -153,6 +158,11 @@ def get_slash_command_specs() -> tuple[SlashCommandSpec, ...]:
             names=('config', 'settings'),
             description='Show local config runtime state, effective config, config sources, or a config value.',
             handler=_handle_config,
+        ),
+        SlashCommandSpec(
+            names=('lsp',),
+            description='Show local LSP runtime status or run document symbols, definition, references, hover, call hierarchy, and diagnostics queries.',
+            handler=_handle_lsp,
         ),
         SlashCommandSpec(
             names=('remotes',),
@@ -395,6 +405,10 @@ def _handle_context_raw(agent: 'LocalCodingAgent', _args: str, input_text: str) 
     return _local_result(input_text, agent.render_context_snapshot_report())
 
 
+def _handle_token_budget(agent: 'LocalCodingAgent', _args: str, input_text: str) -> SlashCommandResult:
+    return _local_result(input_text, agent.render_token_budget_report())
+
+
 def _handle_mcp(agent: 'LocalCodingAgent', args: str, input_text: str) -> SlashCommandResult:
     command = args.strip()
     if not command:
@@ -518,6 +532,81 @@ def _handle_config(agent: 'LocalCodingAgent', args: str, input_text: str) -> Sla
     return _local_result(
         input_text,
         'Usage: /config [effective|source <name>|get <key-path>]',
+    )
+
+
+def _handle_lsp(agent: 'LocalCodingAgent', args: str, input_text: str) -> SlashCommandResult:
+    command = args.strip()
+    if not command:
+        return _local_result(input_text, agent.render_lsp_report())
+    if command == 'diagnostics':
+        return _local_result(input_text, agent.render_lsp_diagnostics_report())
+    if command.startswith('diagnostics '):
+        file_path = command.split(' ', 1)[1].strip()
+        if not file_path:
+            return _local_result(input_text, 'Usage: /lsp diagnostics [file-path]')
+        return _local_result(input_text, agent.render_lsp_diagnostics_report(file_path))
+    if command.startswith('symbols '):
+        file_path = command.split(' ', 1)[1].strip()
+        if not file_path:
+            return _local_result(input_text, 'Usage: /lsp symbols <file-path>')
+        return _local_result(input_text, agent.render_lsp_document_symbols_report(file_path))
+    if command.startswith('workspace '):
+        query = command.split(' ', 1)[1].strip()
+        if not query:
+            return _local_result(input_text, 'Usage: /lsp workspace <query>')
+        return _local_result(input_text, agent.render_lsp_workspace_symbols_report(query))
+    parts = command.split()
+    if len(parts) == 4 and parts[0] in {
+        'definition',
+        'references',
+        'hover',
+        'hierarchy',
+        'incoming',
+        'outgoing',
+    }:
+        subcommand, file_path, line_text, character_text = parts
+        try:
+            line = int(line_text)
+            character = int(character_text)
+        except ValueError:
+            return _local_result(
+                input_text,
+                f'Usage: /lsp {subcommand} <file-path> <line> <character>',
+            )
+        if subcommand == 'definition':
+            return _local_result(
+                input_text,
+                agent.render_lsp_definition_report(file_path, line, character),
+            )
+        if subcommand == 'references':
+            return _local_result(
+                input_text,
+                agent.render_lsp_references_report(file_path, line, character),
+            )
+        if subcommand == 'hover':
+            return _local_result(
+                input_text,
+                agent.render_lsp_hover_report(file_path, line, character),
+            )
+        if subcommand == 'hierarchy':
+            return _local_result(
+                input_text,
+                agent.render_lsp_prepare_call_hierarchy_report(file_path, line, character),
+            )
+        if subcommand == 'incoming':
+            return _local_result(
+                input_text,
+                agent.render_lsp_incoming_calls_report(file_path, line, character),
+            )
+        if subcommand == 'outgoing':
+            return _local_result(
+                input_text,
+                agent.render_lsp_outgoing_calls_report(file_path, line, character),
+            )
+    return _local_result(
+        input_text,
+        'Usage: /lsp [symbols <file>|workspace <query>|definition <file> <line> <character>|references <file> <line> <character>|hover <file> <line> <character>|hierarchy <file> <line> <character>|incoming <file> <line> <character>|outgoing <file> <line> <character>|diagnostics [file]]',
     )
 
 

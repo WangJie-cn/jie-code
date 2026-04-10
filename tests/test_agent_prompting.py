@@ -226,6 +226,23 @@ class AgentPromptingTests(unittest.TestCase):
         prompt = render_system_prompt(parts)
         self.assertIn('# Config', prompt)
 
+    def test_prompt_builder_mentions_lsp_when_runtime_is_loaded(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workspace = Path(tmp_dir)
+            (workspace / 'sample.py').write_text('def helper(value):\n    return value * 2\n', encoding='utf-8')
+            runtime_config = AgentRuntimeConfig(cwd=workspace)
+            model_config = ModelConfig(model='Qwen/Qwen3-Coder-30B-A3B-Instruct')
+            prompt_context = build_prompt_context(runtime_config, model_config)
+            parts = build_system_prompt_parts(
+                prompt_context=prompt_context,
+                runtime_config=runtime_config,
+                tools=default_tool_registry(),
+            )
+
+        prompt = render_system_prompt(parts)
+        self.assertIn('# LSP', prompt)
+        self.assertIn('Use the LSP tool', prompt)
+
     def test_prompt_builder_mentions_tasks_when_runtime_is_loaded(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             workspace = Path(tmp_dir)

@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from .account_runtime import AccountRuntime
     from .ask_user_runtime import AskUserRuntime
     from .config_runtime import ConfigRuntime
+    from .lsp_runtime import LSPRuntime
     from .mcp_runtime import MCPRuntime
     from .plan_runtime import PlanRuntime
     from .remote_runtime import RemoteRuntime
@@ -51,6 +52,7 @@ class ToolExecutionContext:
     account_runtime: 'AccountRuntime | None' = None
     ask_user_runtime: 'AskUserRuntime | None' = None
     config_runtime: 'ConfigRuntime | None' = None
+    lsp_runtime: 'LSPRuntime | None' = None
     mcp_runtime: 'MCPRuntime | None' = None
     remote_runtime: 'RemoteRuntime | None' = None
     remote_trigger_runtime: 'RemoteTriggerRuntime | None' = None
@@ -126,6 +128,7 @@ def build_tool_context(
     account_runtime: 'AccountRuntime | None' = None,
     ask_user_runtime: 'AskUserRuntime | None' = None,
     config_runtime: 'ConfigRuntime | None' = None,
+    lsp_runtime: 'LSPRuntime | None' = None,
     mcp_runtime: 'MCPRuntime | None' = None,
     remote_runtime: 'RemoteRuntime | None' = None,
     remote_trigger_runtime: 'RemoteTriggerRuntime | None' = None,
@@ -146,6 +149,7 @@ def build_tool_context(
         account_runtime=account_runtime,
         ask_user_runtime=ask_user_runtime,
         config_runtime=config_runtime,
+        lsp_runtime=lsp_runtime,
         mcp_runtime=mcp_runtime,
         remote_runtime=remote_runtime,
         remote_trigger_runtime=remote_trigger_runtime,
@@ -312,6 +316,36 @@ def default_tool_registry() -> dict[str, AgentTool]:
                 'required': ['command'],
             },
             handler=_run_bash,
+        ),
+        AgentTool(
+            name='LSP',
+            description='Use local LSP-style code intelligence for definitions, references, hover, symbols, and call hierarchy.',
+            parameters={
+                'type': 'object',
+                'properties': {
+                    'operation': {
+                        'type': 'string',
+                        'enum': [
+                            'goToDefinition',
+                            'findReferences',
+                            'hover',
+                            'documentSymbol',
+                            'workspaceSymbol',
+                            'goToImplementation',
+                            'prepareCallHierarchy',
+                            'incomingCalls',
+                            'outgoingCalls',
+                        ],
+                    },
+                    'file_path': {'type': 'string'},
+                    'line': {'type': 'integer', 'minimum': 1},
+                    'character': {'type': 'integer', 'minimum': 1},
+                    'query': {'type': 'string'},
+                    'max_results': {'type': 'integer', 'minimum': 1, 'maximum': 200},
+                },
+                'required': ['operation', 'file_path', 'line', 'character'],
+            },
+            handler=_lsp_query,
         ),
         AgentTool(
             name='web_fetch',
@@ -2729,6 +2763,42 @@ def _delegate_agent_placeholder(
     )
 
 
+def _lsp_query(arguments: dict[str, Any], context: ToolExecutionContext):
+    runtime = _require_lsp_runtime(context)
+    operation = _require_string(arguments, 'operation')
+    file_path = _require_string(arguments, 'file_path')
+    line = _coerce_int(arguments, 'line', 1)
+    character = _coerce_int(arguments, 'character', 1)
+    query = arguments.get('query')
+    if query is not None and not isinstance(query, str):
+        raise ToolExecutionError('query must be a string')
+    max_results = _coerce_int(arguments, 'max_results', 50)
+    try:
+        result = runtime.query(
+            operation,
+            file_path=file_path,
+            line=line,
+            character=character,
+            query=query,
+            max_results=max_results,
+        )
+    except KeyError as exc:
+        raise ToolExecutionError(str(exc)) from exc
+    return (
+        result.content,
+        {
+            'action': 'lsp_query',
+            'operation': result.operation,
+            'file_path': file_path,
+            'line': line,
+            'character': character,
+            'result_count': result.result_count,
+            'file_count': result.file_count,
+            'symbol_name': result.symbol_name,
+        },
+    )
+
+
 def _require_account_runtime(context: ToolExecutionContext):
     if context.account_runtime is None:
         raise ToolExecutionError('No local account runtime is available.')
@@ -2754,6 +2824,14 @@ def _require_config_runtime(context: ToolExecutionContext):
     if context.config_runtime is None:
         raise ToolExecutionError('No local config runtime is available.')
     return context.config_runtime
+
+
+def _require_lsp_runtime(context: ToolExecutionContext):
+    if context.lsp_runtime is None or not context.lsp_runtime.has_lsp_support():
+        raise ToolExecutionError(
+            'No local LSP runtime is available. Add supported source files to the workspace or a .claw-lsp.json manifest.'
+        )
+    return context.lsp_runtime
 
 
 def _require_mcp_runtime(context: ToolExecutionContext):

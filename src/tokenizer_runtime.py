@@ -156,7 +156,7 @@ def _try_build_transformers_counter(
     model_ref: str | None,
     trust_remote_code: str | None,
 ) -> ResolvedTokenCounter | None:
-    if model_ref is None:
+    if model_ref is None or not _should_try_transformers(model_ref):
         return None
     try:
         from transformers import AutoTokenizer
@@ -194,6 +194,15 @@ def _try_build_transformers_counter(
         ),
         count_text=_count,
     )
+
+
+def _should_try_transformers(model_ref: str) -> bool:
+    if os.path.exists(model_ref):
+        return True
+    normalized = model_ref.strip()
+    if not normalized:
+        return False
+    return '/' in normalized or '\\' in normalized
 
 
 def _heuristic_count(text: str) -> int:

@@ -24,6 +24,7 @@ from .bootstrap_graph import build_bootstrap_graph
 from .command_graph import build_command_graph
 from .commands import execute_command, get_command, get_commands, render_command_index
 from .config_runtime import ConfigRuntime
+from .lsp_runtime import LSPRuntime
 from .mcp_runtime import MCPRuntime
 from .parity_audit import run_parity_audit
 from .permissions import ToolPermissionContext
@@ -680,6 +681,52 @@ def build_parser() -> argparse.ArgumentParser:
     config_set_parser.add_argument('value_json')
     config_set_parser.add_argument('--source', default='local')
     config_set_parser.add_argument('--cwd', default='.')
+    lsp_status_parser = subparsers.add_parser('lsp-status', help='show local LSP runtime summary')
+    lsp_status_parser.add_argument('--cwd', default='.')
+    lsp_symbols_parser = subparsers.add_parser('lsp-symbols', help='show local LSP document symbols for one file')
+    lsp_symbols_parser.add_argument('file_path')
+    lsp_symbols_parser.add_argument('--cwd', default='.')
+    lsp_workspace_parser = subparsers.add_parser('lsp-workspace-symbols', help='search workspace symbols through the local LSP runtime')
+    lsp_workspace_parser.add_argument('query')
+    lsp_workspace_parser.add_argument('--max-results', type=int, default=50)
+    lsp_workspace_parser.add_argument('--cwd', default='.')
+    lsp_definition_parser = subparsers.add_parser('lsp-definition', help='run a local LSP definition query')
+    lsp_definition_parser.add_argument('file_path')
+    lsp_definition_parser.add_argument('line', type=int)
+    lsp_definition_parser.add_argument('character', type=int)
+    lsp_definition_parser.add_argument('--max-results', type=int, default=20)
+    lsp_definition_parser.add_argument('--cwd', default='.')
+    lsp_references_parser = subparsers.add_parser('lsp-references', help='run a local LSP references query')
+    lsp_references_parser.add_argument('file_path')
+    lsp_references_parser.add_argument('line', type=int)
+    lsp_references_parser.add_argument('character', type=int)
+    lsp_references_parser.add_argument('--max-results', type=int, default=50)
+    lsp_references_parser.add_argument('--cwd', default='.')
+    lsp_hover_parser = subparsers.add_parser('lsp-hover', help='run a local LSP hover query')
+    lsp_hover_parser.add_argument('file_path')
+    lsp_hover_parser.add_argument('line', type=int)
+    lsp_hover_parser.add_argument('character', type=int)
+    lsp_hover_parser.add_argument('--cwd', default='.')
+    lsp_diagnostics_parser = subparsers.add_parser('lsp-diagnostics', help='show local LSP diagnostics')
+    lsp_diagnostics_parser.add_argument('--file-path')
+    lsp_diagnostics_parser.add_argument('--cwd', default='.')
+    lsp_hierarchy_parser = subparsers.add_parser('lsp-call-hierarchy', help='show local LSP call hierarchy at a position')
+    lsp_hierarchy_parser.add_argument('file_path')
+    lsp_hierarchy_parser.add_argument('line', type=int)
+    lsp_hierarchy_parser.add_argument('character', type=int)
+    lsp_hierarchy_parser.add_argument('--cwd', default='.')
+    lsp_incoming_parser = subparsers.add_parser('lsp-incoming-calls', help='show local LSP incoming calls at a position')
+    lsp_incoming_parser.add_argument('file_path')
+    lsp_incoming_parser.add_argument('line', type=int)
+    lsp_incoming_parser.add_argument('character', type=int)
+    lsp_incoming_parser.add_argument('--max-results', type=int, default=50)
+    lsp_incoming_parser.add_argument('--cwd', default='.')
+    lsp_outgoing_parser = subparsers.add_parser('lsp-outgoing-calls', help='show local LSP outgoing calls at a position')
+    lsp_outgoing_parser.add_argument('file_path')
+    lsp_outgoing_parser.add_argument('line', type=int)
+    lsp_outgoing_parser.add_argument('character', type=int)
+    lsp_outgoing_parser.add_argument('--max-results', type=int, default=50)
+    lsp_outgoing_parser.add_argument('--cwd', default='.')
     workflow_list_parser = subparsers.add_parser('workflow-list', help='list local workflow definitions')
     workflow_list_parser.add_argument('--cwd', default='.')
     workflow_list_parser.add_argument('--query')
@@ -824,6 +871,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     context_raw_parser = subparsers.add_parser('agent-context-raw', help='render the raw Python agent context snapshot')
     _add_agent_common_args(context_raw_parser, include_backend=False)
+
+    token_budget_parser = subparsers.add_parser('token-budget', help='render the current token budget and prompt-length limits')
+    _add_agent_common_args(token_budget_parser, include_backend=False)
     return parser
 
 
@@ -1105,6 +1155,114 @@ def main(argv: list[str] | None = None) -> int:
         print(f'effective_key_count={mutation.effective_key_count}')
         print(runtime.render_value(args.key_path))
         return 0
+    if args.command == 'lsp-status':
+        runtime = LSPRuntime.from_workspace(Path(args.cwd).resolve())
+        print('# LSP')
+        print()
+        print(runtime.render_summary())
+        return 0
+    if args.command == 'lsp-symbols':
+        runtime = LSPRuntime.from_workspace(Path(args.cwd).resolve())
+        try:
+            print(runtime.render_document_symbols(args.file_path))
+        except KeyError as exc:
+            print(exc)
+            return 1
+        return 0
+    if args.command == 'lsp-workspace-symbols':
+        runtime = LSPRuntime.from_workspace(Path(args.cwd).resolve())
+        print(runtime.render_workspace_symbols(args.query, max_results=args.max_results))
+        return 0
+    if args.command == 'lsp-definition':
+        runtime = LSPRuntime.from_workspace(Path(args.cwd).resolve())
+        try:
+            print(
+                runtime.render_definition(
+                    args.file_path,
+                    args.line,
+                    args.character,
+                    max_results=args.max_results,
+                )
+            )
+        except KeyError as exc:
+            print(exc)
+            return 1
+        return 0
+    if args.command == 'lsp-references':
+        runtime = LSPRuntime.from_workspace(Path(args.cwd).resolve())
+        try:
+            print(
+                runtime.render_references(
+                    args.file_path,
+                    args.line,
+                    args.character,
+                    max_results=args.max_results,
+                )
+            )
+        except KeyError as exc:
+            print(exc)
+            return 1
+        return 0
+    if args.command == 'lsp-hover':
+        runtime = LSPRuntime.from_workspace(Path(args.cwd).resolve())
+        try:
+            print(runtime.render_hover(args.file_path, args.line, args.character))
+        except KeyError as exc:
+            print(exc)
+            return 1
+        return 0
+    if args.command == 'lsp-diagnostics':
+        runtime = LSPRuntime.from_workspace(Path(args.cwd).resolve())
+        try:
+            print(runtime.render_diagnostics(args.file_path))
+        except KeyError as exc:
+            print(exc)
+            return 1
+        return 0
+    if args.command == 'lsp-call-hierarchy':
+        runtime = LSPRuntime.from_workspace(Path(args.cwd).resolve())
+        try:
+            print(
+                runtime.render_prepare_call_hierarchy(
+                    args.file_path,
+                    args.line,
+                    args.character,
+                )
+            )
+        except KeyError as exc:
+            print(exc)
+            return 1
+        return 0
+    if args.command == 'lsp-incoming-calls':
+        runtime = LSPRuntime.from_workspace(Path(args.cwd).resolve())
+        try:
+            print(
+                runtime.render_incoming_calls(
+                    args.file_path,
+                    args.line,
+                    args.character,
+                    max_results=args.max_results,
+                )
+            )
+        except KeyError as exc:
+            print(exc)
+            return 1
+        return 0
+    if args.command == 'lsp-outgoing-calls':
+        runtime = LSPRuntime.from_workspace(Path(args.cwd).resolve())
+        try:
+            print(
+                runtime.render_outgoing_calls(
+                    args.file_path,
+                    args.line,
+                    args.character,
+                    max_results=args.max_results,
+                )
+            )
+        except KeyError as exc:
+            print(exc)
+            return 1
+        return 0
     if args.command == 'workflow-list':
         runtime = WorkflowRuntime.from_workspace(Path(args.cwd).resolve())
         print(runtime.render_workflows_index(query=args.query))
@@ -1343,6 +1501,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == 'agent-context-raw':
         agent = _build_agent(args)
         print(agent.render_context_snapshot_report())
+        return 0
+    if args.command == 'token-budget':
+        agent = _build_agent(args)
+        agent.last_session = agent.build_session()
+        print(agent.render_token_budget_report())
         return 0
 
     parser.error(f'unknown command: {args.command}')

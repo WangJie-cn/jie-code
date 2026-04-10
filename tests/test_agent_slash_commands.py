@@ -99,13 +99,25 @@ class AgentSlashCommandTests(unittest.TestCase):
             workspace = Path(tmp_dir)
             (workspace / 'CLAUDE.md').write_text('repo instructions\n', encoding='utf-8')
             agent = LocalCodingAgent(
-                model_config=ModelConfig(model='Qwen/Qwen3-Coder-30B-A3B-Instruct'),
+                model_config=ModelConfig(model='test-model'),
                 runtime_config=AgentRuntimeConfig(cwd=workspace),
             )
             result = agent.run('/context')
         self.assertIn('## Context Usage', result.final_output)
         self.assertIn('### Estimated usage by category', result.final_output)
         self.assertIn('### Memory Files', result.final_output)
+
+    def test_token_budget_command_renders_local_report(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workspace = Path(tmp_dir)
+            agent = LocalCodingAgent(
+                model_config=ModelConfig(model='test-model'),
+                runtime_config=AgentRuntimeConfig(cwd=workspace),
+            )
+            result = agent.run('/token-budget')
+        self.assertIn('# Token Budget', result.final_output)
+        self.assertIn('Hard input limit', result.final_output)
+        self.assertIn('Auto-compact buffer', result.final_output)
 
     def test_mcp_and_resource_commands_render_local_reports(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -197,6 +209,34 @@ class AgentSlashCommandTests(unittest.TestCase):
         self.assertIn('provider=backup-search', activate_result.final_output)
         self.assertIn('# Search Provider', provider_result.final_output)
         self.assertIn('backup-search', provider_result.final_output)
+
+    def test_lsp_commands_render_local_reports(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workspace = Path(tmp_dir)
+            (workspace / 'sample.py').write_text(
+                'def helper(value):\n'
+                '    """Double a value."""\n'
+                '    return value * 2\n'
+                '\n'
+                'def run(item):\n'
+                '    return helper(item)\n',
+                encoding='utf-8',
+            )
+            agent = LocalCodingAgent(
+                model_config=ModelConfig(model='Qwen/Qwen3-Coder-30B-A3B-Instruct'),
+                runtime_config=AgentRuntimeConfig(cwd=workspace),
+            )
+            summary_result = agent.run('/lsp')
+            symbols_result = agent.run('/lsp symbols sample.py')
+            definition_result = agent.run('/lsp definition sample.py 6 12')
+            diagnostics_result = agent.run('/lsp diagnostics sample.py')
+        self.assertIn('# LSP', summary_result.final_output)
+        self.assertIn('Indexed candidate files: 1', summary_result.final_output)
+        self.assertIn('# LSP Document Symbols', symbols_result.final_output)
+        self.assertIn('function helper', symbols_result.final_output)
+        self.assertIn('# LSP Definition', definition_result.final_output)
+        self.assertIn('function helper', definition_result.final_output)
+        self.assertIn('# LSP Diagnostics', diagnostics_result.final_output)
 
     def test_remote_commands_render_and_update_local_remote_runtime(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -387,7 +427,7 @@ class AgentSlashCommandTests(unittest.TestCase):
     def test_tools_and_status_commands_render_local_reports(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             agent = LocalCodingAgent(
-                model_config=ModelConfig(model='Qwen/Qwen3-Coder-30B-A3B-Instruct'),
+                model_config=ModelConfig(model='test-model'),
                 runtime_config=AgentRuntimeConfig(cwd=Path(tmp_dir)),
             )
             tools_result = agent.run('/tools')

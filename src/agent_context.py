@@ -13,6 +13,7 @@ from .account_runtime import AccountRuntime
 from .ask_user_runtime import AskUserRuntime
 from .config_runtime import ConfigRuntime
 from .hook_policy import HookPolicyRuntime
+from .lsp_runtime import LSPRuntime
 from .mcp_runtime import MCPRuntime
 from .plan_runtime import PlanRuntime
 from .plugin_runtime import PluginRuntime
@@ -254,6 +255,9 @@ def _get_user_context_cached(
     config_runtime = ConfigRuntime.from_workspace(Path(cwd))
     if config_runtime.has_config():
         context['configRuntime'] = config_runtime.render_summary()
+    lsp_runtime = LSPRuntime.from_workspace(Path(cwd), additional_working_directories)
+    if lsp_runtime.has_lsp_support():
+        context['lspRuntime'] = lsp_runtime.render_summary()
     plan_runtime = PlanRuntime.from_workspace(Path(cwd))
     if plan_runtime.steps:
         context['planRuntime'] = plan_runtime.render_summary()
