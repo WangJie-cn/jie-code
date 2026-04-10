@@ -28,7 +28,7 @@ class AgentContextUsageTests(unittest.TestCase):
 
         report = collect_context_usage(
             session=session,
-            model='Qwen/Qwen3-Coder-30B-A3B-Instruct',
+            model='test-model',
             strategy='test session',
         )
         rendered = format_context_usage(report)

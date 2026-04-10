@@ -91,6 +91,7 @@ python3 -m unittest tests.test_plan_runtime -v
 python3 -m unittest tests.test_background_runtime -v
 python3 -m unittest tests.test_remote_runtime -v
 python3 -m unittest tests.test_config_runtime -v
+python3 -m unittest tests.test_lsp_runtime -v
 python3 -m unittest tests.test_account_runtime -v
 python3 -m unittest tests.test_ask_user_runtime -v
 python3 -m unittest tests.test_team_runtime -v
@@ -306,6 +307,30 @@ cat > ./test_cases_notebooks/demo.ipynb <<'EOF'
  "nbformat": 4,
  "nbformat_minor": 5
 }
+EOF
+```
+
+### 4.2e LSP fixture
+
+```bash
+cat > ./test_cases/sample.py <<'EOF'
+def helper(value):
+    """Double a numeric value."""
+    return value * 2
+
+
+def orchestrate(item):
+    return helper(item)
+
+
+class Greeter:
+    def greet(self, name):
+        return helper(len(name))
+EOF
+
+cat > ./test_cases/broken.py <<'EOF'
+def broken(:
+    pass
 EOF
 ```
 
@@ -568,6 +593,8 @@ python3 -m src.main agent "/context" --cwd ./test_cases
 python3 -m src.main agent "/usage summarize current session" --cwd ./test_cases
 python3 -m src.main agent "/context-raw" --cwd ./test_cases
 python3 -m src.main agent "/env" --cwd ./test_cases
+python3 -m src.main agent "/token-budget" --cwd ./test_cases
+python3 -m src.main agent "/budget" --cwd ./test_cases
 python3 -m src.main agent "/prompt" --cwd ./test_cases
 python3 -m src.main agent "/system-prompt" --cwd ./test_cases
 python3 -m src.main agent "/permissions" --cwd ./test_cases
@@ -650,6 +677,7 @@ python3 -m src.main agent "/mcp (MCP)" --cwd ./test_cases_mcp
 python3 -m src.main agent-prompt --cwd ./test_cases
 python3 -m src.main agent-context --cwd ./test_cases
 python3 -m src.main agent-context-raw --cwd ./test_cases
+python3 -m src.main token-budget --cwd ./test_cases
 ```
 
 ### 6.2 Extra working directories and `CLAUDE.md` toggle
@@ -680,6 +708,7 @@ python3 -m src.main agent-prompt \
 ```bash
 python3 -m src.main agent "/status" --cwd ./test_cases
 python3 -m src.main agent-context --cwd ./test_cases
+python3 -m src.main token-budget --cwd ./test_cases
 ```
 
 Override the tokenizer backend:
@@ -691,6 +720,7 @@ export CLAW_CODE_TOKENIZER_MODEL=Qwen/Qwen3-Coder-30B-A3B-Instruct
 
 python3 -m src.main agent "/status" --cwd ./test_cases
 python3 -m src.main agent-context --cwd ./test_cases
+python3 -m src.main token-budget --cwd ./test_cases
 ```
 
 If no tokenizer backend is available, the runtime will fall back to the heuristic counter and `/status` will report that.
@@ -1224,6 +1254,46 @@ python3 -m src.main agent "/logout" --cwd ./test_cases
 ```bash
 python3 -m src.main agent \
   "List the configured account profiles, activate the local profile, then report the active account session." \
+  --cwd ./test_cases \
+  --show-transcript
+```
+
+## 14B. LSP Runtime
+
+### 14B.1 CLI status and code intelligence reports
+
+```bash
+python3 -m src.main lsp-status --cwd ./test_cases
+python3 -m src.main lsp-symbols sample.py --cwd ./test_cases
+python3 -m src.main lsp-workspace-symbols helper --cwd ./test_cases
+python3 -m src.main lsp-definition sample.py 6 12 --cwd ./test_cases
+python3 -m src.main lsp-references sample.py 6 12 --cwd ./test_cases
+python3 -m src.main lsp-hover sample.py 1 5 --cwd ./test_cases
+python3 -m src.main lsp-diagnostics --cwd ./test_cases
+python3 -m src.main lsp-diagnostics --cwd ./test_cases --file-path broken.py
+python3 -m src.main lsp-call-hierarchy sample.py 6 12 --cwd ./test_cases
+python3 -m src.main lsp-incoming-calls sample.py 1 5 --cwd ./test_cases
+python3 -m src.main lsp-outgoing-calls sample.py 6 12 --cwd ./test_cases
+```
+
+### 14B.2 Slash commands
+
+```bash
+python3 -m src.main agent "/lsp" --cwd ./test_cases
+python3 -m src.main agent "/lsp symbols sample.py" --cwd ./test_cases
+python3 -m src.main agent "/lsp workspace helper" --cwd ./test_cases
+python3 -m src.main agent "/lsp definition sample.py 6 12" --cwd ./test_cases
+python3 -m src.main agent "/lsp references sample.py 6 12" --cwd ./test_cases
+python3 -m src.main agent "/lsp hover sample.py 1 5" --cwd ./test_cases
+python3 -m src.main agent "/lsp diagnostics broken.py" --cwd ./test_cases
+python3 -m src.main agent "/lsp hierarchy sample.py 6 12" --cwd ./test_cases
+```
+
+### 14B.3 Real tool loop
+
+```bash
+python3 -m src.main agent \
+  "Use the LSP tool to find the definition of helper in sample.py, then summarize the result." \
   --cwd ./test_cases \
   --show-transcript
 ```

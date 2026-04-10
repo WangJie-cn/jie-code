@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from .agent_context_usage import estimate_tokens
+from .agent_types import UsageStats
 from .agent_session import AgentMessage
 
 if TYPE_CHECKING:
@@ -285,6 +286,7 @@ class CompactionResult:
     pre_compact_token_count: int = 0
     post_compact_token_count: int = 0
     summary_text: str = ''
+    usage: UsageStats = field(default_factory=UsageStats)
     error: str | None = None
 
 
@@ -421,6 +423,7 @@ def compact_conversation(
         pre_compact_token_count=pre_tokens,
         post_compact_token_count=post_tokens,
         summary_text=summary_text,
+        usage=turn.usage,
     )
 
 

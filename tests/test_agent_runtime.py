@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from src.agent_session import AgentMessage
 from src.agent_runtime import LocalCodingAgent
 from src.agent_tools import build_tool_context, default_tool_registry, execute_tool
 from src.agent_types import (
@@ -14,9 +15,17 @@ from src.agent_types import (
     BudgetConfig,
     ModelConfig,
     OutputSchemaConfig,
+    UsageStats,
 )
+from src.compact import CompactionResult
 from src.openai_compat import OpenAICompatClient
-from src.session_store import load_agent_session
+from src.session_store import (
+    StoredAgentSession,
+    load_agent_session,
+    serialize_model_config,
+    serialize_runtime_config,
+)
+from src.token_budget import TokenBudgetSnapshot
 
 
 class FakeHTTPResponse:
@@ -655,6 +664,216 @@ class AgentRuntimeTests(unittest.TestCase):
         self.assertEqual(result.stop_reason, 'budget_exceeded')
         self.assertIn('token budget', result.final_output)
         self.assertEqual(result.usage.total_tokens, 42)
+
+    def test_agent_rejects_prompt_before_backend_when_preflight_input_budget_is_exceeded(self) -> None:
+        snapshot = TokenBudgetSnapshot(
+            model='test-model',
+            context_window_tokens=1000,
+            projected_input_tokens=240,
+            message_tokens=220,
+            chat_overhead_tokens=20,
+            reserved_output_tokens=128,
+            reserved_compaction_buffer_tokens=64,
+            reserved_schema_tokens=0,
+            hard_input_limit_tokens=40,
+            soft_input_limit_tokens=0,
+            overflow_tokens=200,
+            soft_overflow_tokens=240,
+            exceeds_hard_limit=True,
+            exceeds_soft_limit=True,
+            token_counter_backend='heuristic',
+            token_counter_source='test',
+            token_counter_accurate=False,
+        )
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workspace = Path(tmp_dir)
+            with patch(
+                'src.agent_runtime.calculate_token_budget',
+                return_value=snapshot,
+            ), patch(
+                'src.agent_runtime.LocalCodingAgent._reduce_context_pressure',
+                return_value=False,
+            ), patch(
+                'src.openai_compat.request.urlopen',
+                side_effect=AssertionError('backend should not be called'),
+            ):
+                agent = LocalCodingAgent(
+                    model_config=ModelConfig(
+                        model='test-model',
+                        base_url='http://127.0.0.1:8000/v1',
+                    ),
+                    runtime_config=AgentRuntimeConfig(
+                        cwd=workspace,
+                        budget_config=BudgetConfig(max_input_tokens=20),
+                    ),
+                )
+                result = agent.run(
+                    'This prompt is intentionally much longer than the tiny configured input budget. '
+                    * 4
+                )
+        self.assertEqual(result.stop_reason, 'prompt_too_long')
+        self.assertIn('Stopped before the next model call', result.final_output)
+
+    def test_agent_auto_compacts_context_before_next_model_call(self) -> None:
+        responses = [
+            {
+                'choices': [
+                    {
+                        'message': {
+                            'role': 'assistant',
+                            'content': 'Recovered after compaction.',
+                        },
+                        'finish_reason': 'stop',
+                    }
+                ],
+                'usage': {'prompt_tokens': 11, 'completion_tokens': 4},
+            }
+        ]
+
+        def fake_budget(
+            *,
+            session,
+            model,
+            budget_config,
+            output_schema=None,
+        ):
+            compacted = any(
+                message.metadata.get('kind') == 'compact_summary'
+                for message in session.messages
+            )
+            projected = 120 if compacted else 540
+            return TokenBudgetSnapshot(
+                model=model,
+                context_window_tokens=1000,
+                projected_input_tokens=projected,
+                message_tokens=max(projected - 18, 0),
+                chat_overhead_tokens=18,
+                reserved_output_tokens=128,
+                reserved_compaction_buffer_tokens=64,
+                reserved_schema_tokens=0,
+                hard_input_limit_tokens=420,
+                soft_input_limit_tokens=180,
+                overflow_tokens=max(projected - 420, 0),
+                soft_overflow_tokens=max(projected - 180, 0),
+                exceeds_hard_limit=projected > 420,
+                exceeds_soft_limit=projected > 180,
+                token_counter_backend='heuristic',
+                token_counter_source='test',
+                token_counter_accurate=False,
+            )
+
+        def fake_compact(agent, custom_instructions=None):
+            session = agent.last_session
+            assert session is not None
+            preserved_tail = [session.messages[-1]]
+            boundary = AgentMessage(
+                role='user',
+                content='<system-reminder>Earlier conversation was compacted.</system-reminder>',
+                message_id='compact_boundary',
+                metadata={'kind': 'compact_boundary'},
+            )
+            summary = AgentMessage(
+                role='user',
+                content='Compacted summary.',
+                message_id='compact_summary',
+                metadata={'kind': 'compact_summary', 'is_compact_summary': True},
+            )
+            session.messages = [session.messages[0], boundary, summary] + preserved_tail
+            return CompactionResult(
+                boundary_message=boundary,
+                summary_messages=[summary],
+                messages_to_keep=preserved_tail,
+                pre_compact_token_count=540,
+                post_compact_token_count=120,
+                summary_text='Summary',
+                usage=UsageStats(input_tokens=7, output_tokens=3),
+            )
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workspace = Path(tmp_dir)
+            runtime_config = AgentRuntimeConfig(
+                cwd=workspace,
+                compact_preserve_messages=1,
+            )
+            stored = StoredAgentSession(
+                session_id='resume_auto_compact',
+                model_config=serialize_model_config(
+                    ModelConfig(
+                        model='test-model',
+                        base_url='http://127.0.0.1:8000/v1',
+                    )
+                ),
+                runtime_config=serialize_runtime_config(runtime_config),
+                system_prompt_parts=('# System\nYou are helpful.',),
+                user_context={},
+                system_context={},
+                messages=(
+                    {
+                        'role': 'system',
+                        'content': '# System\nYou are helpful.',
+                        'message_id': 'system_0',
+                        'metadata': {'kind': 'system'},
+                    },
+                    {
+                        'role': 'user',
+                        'content': 'First request.',
+                        'message_id': 'user_1',
+                        'metadata': {'kind': 'user'},
+                    },
+                    {
+                        'role': 'assistant',
+                        'content': 'First response.',
+                        'message_id': 'assistant_1',
+                        'metadata': {'kind': 'assistant'},
+                    },
+                    {
+                        'role': 'user',
+                        'content': 'Second request.',
+                        'message_id': 'user_2',
+                        'metadata': {'kind': 'user'},
+                    },
+                    {
+                        'role': 'assistant',
+                        'content': 'Second response.',
+                        'message_id': 'assistant_2',
+                        'metadata': {'kind': 'assistant'},
+                    },
+                ),
+                turns=2,
+                tool_calls=0,
+                usage=UsageStats().to_dict(),
+                total_cost_usd=0.0,
+                file_history=(),
+                budget_state={},
+                plugin_state={},
+                scratchpad_directory=None,
+            )
+            with patch(
+                'src.agent_runtime.calculate_token_budget',
+                side_effect=fake_budget,
+            ), patch(
+                'src.agent_runtime.LocalCodingAgent._reduce_context_pressure',
+                return_value=False,
+            ), patch(
+                'src.agent_runtime.compact_conversation',
+                side_effect=fake_compact,
+            ), patch(
+                'src.openai_compat.request.urlopen',
+                side_effect=make_urlopen_side_effect(responses),
+            ):
+                agent = LocalCodingAgent(
+                    model_config=ModelConfig(
+                        model='test-model',
+                        base_url='http://127.0.0.1:8000/v1',
+                    ),
+                    runtime_config=runtime_config,
+                )
+                result = agent.resume('Continue after compaction', stored)
+        self.assertEqual(result.final_output, 'Recovered after compaction.')
+        self.assertTrue(
+            any(event.get('type') == 'auto_compact_summary' for event in result.events)
+        )
+        self.assertGreaterEqual(result.usage.total_tokens, 25)
 
     def test_agent_continues_when_model_response_is_truncated(self) -> None:
         responses = [

@@ -104,6 +104,8 @@ class MainCliTests(unittest.TestCase):
                     [
                         'agent-chat',
                         'First prompt',
+                        '--model',
+                        'test-model',
                         '--cwd',
                         str(workspace),
                     ]
@@ -194,6 +196,21 @@ class MainCliTests(unittest.TestCase):
         args = parser.parse_args(['config-get', 'review.mode', '--cwd', '.'])
         self.assertEqual(args.command, 'config-get')
         self.assertEqual(args.key_path, 'review.mode')
+        self.assertEqual(args.cwd, '.')
+
+    def test_parser_accepts_lsp_runtime_commands(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(['lsp-definition', 'sample.py', '4', '12', '--cwd', '.'])
+        self.assertEqual(args.command, 'lsp-definition')
+        self.assertEqual(args.file_path, 'sample.py')
+        self.assertEqual(args.line, 4)
+        self.assertEqual(args.character, 12)
+        self.assertEqual(args.cwd, '.')
+
+    def test_parser_accepts_token_budget_command(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(['token-budget', '--cwd', '.'])
+        self.assertEqual(args.command, 'token-budget')
         self.assertEqual(args.cwd, '.')
 
     def test_parser_accepts_team_runtime_commands(self) -> None:

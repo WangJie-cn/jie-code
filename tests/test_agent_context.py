@@ -184,6 +184,17 @@ class AgentContextTests(unittest.TestCase):
         self.assertIn('Config sources: 1', snapshot.user_context['configRuntime'])
         self.assertIn('Effective keys: 2', snapshot.user_context['configRuntime'])
 
+    def test_user_context_loads_lsp_runtime_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workspace = Path(tmp_dir) / 'repo'
+            workspace.mkdir(parents=True)
+            (workspace / 'sample.py').write_text('def helper(value):\n    return value * 2\n', encoding='utf-8')
+
+            snapshot = build_context_snapshot(AgentRuntimeConfig(cwd=workspace))
+
+        self.assertIn('lspRuntime', snapshot.user_context)
+        self.assertIn('Indexed candidate files: 1', snapshot.user_context['lspRuntime'])
+
     def test_user_context_loads_task_runtime_summary(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             workspace = Path(tmp_dir) / 'repo'

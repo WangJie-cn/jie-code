@@ -97,6 +97,7 @@ def build_system_prompt_parts(
         get_account_guidance_section(prompt_context),
         get_ask_user_guidance_section(prompt_context),
         get_config_guidance_section(prompt_context),
+        get_lsp_guidance_section(prompt_context),
         get_plan_guidance_section(prompt_context),
         get_task_guidance_section(prompt_context),
         get_team_guidance_section(prompt_context),
@@ -301,6 +302,18 @@ def get_config_guidance_section(prompt_context: PromptContext) -> str:
         'Treat the effective config as merged workspace state, and inspect the specific source when override order matters.',
     ]
     return '\n'.join(['# Config', *prepend_bullets(items)])
+
+
+def get_lsp_guidance_section(prompt_context: PromptContext) -> str:
+    lsp_runtime = prompt_context.user_context.get('lspRuntime')
+    if not lsp_runtime:
+        return ''
+    items = [
+        'A local LSP-style code-intelligence runtime may be available for supported source files.',
+        'Use the LSP tool when you need definitions, references, hover details, document symbols, workspace symbols, or call hierarchy information.',
+        'Use LSP diagnostics to catch syntax and parse issues before making larger edits when the file type is supported.',
+    ]
+    return '\n'.join(['# LSP', *prepend_bullets(items)])
 
 
 def get_task_guidance_section(prompt_context: PromptContext) -> str:

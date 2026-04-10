@@ -82,6 +82,7 @@ Done:
 - [x] Local manifest/env-backed search runtime discovery
 - [x] Local search-provider activation persistence
 - [x] Provider-backed web search execution against configured search backends
+- [x] Local heuristic LSP runtime for definitions, references, hover, document symbols, workspace symbols, call hierarchy, and diagnostics
 - [x] Local persistent task runtime discovery
 - [x] Local task create/get/list/update runtime flows
 - [x] Local todo-list replacement runtime flow
@@ -98,6 +99,10 @@ Done:
 - [x] Snipped-message metadata with source lineage id and revision
 - [x] Resume-time compaction / snipping replay reminder
 - [x] Resume-time compaction replay of source mutation summaries
+- [x] Preflight prompt-length validation before each model call
+- [x] Hard prompt-length stop before backend calls when the effective input budget is exceeded
+- [x] Token-budget calculation with projected prompt size, chat framing overhead, output reserve, and soft/hard input limits
+- [x] Preflight auto-compact/context collapse fallback before the next model call
 - [x] Query-engine facade that can drive the real Python runtime agent
 - [x] Query-engine runtime event counters and transcript-kind summaries
 - [x] Query-engine runtime mutation counters
@@ -120,9 +125,9 @@ Missing:
 - [ ] Full executable plugin lifecycle beyond manifest-driven prompt/tool/session hooks, blocking, aliases, virtual tools, and persisted runtime state
 - [ ] Full session compaction / snipping parity beyond lineage-aware summaries, mutation-serial compaction metadata, and replay reminders
 - [ ] Full `QueryEngine.ts` parity (session init, message normalization, SDK-compatible message transforms, attachment handling)
-- [ ] Auto-compact and context collapse features from `query.ts`
-- [ ] Prompt length validation from `query.ts`
-- [ ] Token budget calculations from `query/tokenBudget.ts`
+- [x] Auto-compact and context collapse features from `query.ts`
+- [x] Prompt length validation from `query.ts`
+- [x] Token budget calculations from `query/tokenBudget.ts`
 
 ## 2. CLI Entrypoints And Runtime Modes
 
@@ -135,6 +140,7 @@ Done:
 - [x] `agent-prompt` command
 - [x] `agent-context` command
 - [x] `agent-context-raw` command
+- [x] `token-budget` command
 - [x] Local background session mode
 - [x] Local background session listing (`agent-ps`)
 - [x] Local background session logs (`agent-logs`)
@@ -146,6 +152,7 @@ Done:
 - [x] Local remote runtime inspection commands (`remote-status`, `remote-profiles`, `remote-disconnect`)
 - [x] Local account runtime inspection commands (`account-status`, `account-profiles`, `account-login`, `account-logout`)
 - [x] Local search runtime inspection commands (`search-status`, `search-providers`, `search-activate`, `search`)
+- [x] Local LSP runtime inspection commands (`lsp-status`, `lsp-symbols`, `lsp-workspace-symbols`, `lsp-definition`, `lsp-references`, `lsp-hover`, `lsp-diagnostics`, `lsp-call-hierarchy`, `lsp-incoming-calls`, `lsp-outgoing-calls`)
 - [x] Local MCP runtime inspection commands (`mcp-status`, `mcp-resources`, `mcp-resource`, `mcp-tools`, `mcp-call-tool`)
 - [x] Inventory/helper commands such as `summary`, `manifest`, `commands`, and `tools`
 
@@ -187,6 +194,7 @@ Done:
 - [x] Local account-runtime guidance section in the Python system prompt
 - [x] Local planning guidance section in the Python system prompt
 - [x] Local task guidance section in the Python system prompt
+- [x] Local LSP guidance section in the Python system prompt
 
 - [x] Product metadata/branding from `constants/product.ts` — ported to `src/prompt_constants.py`
 - [x] API limits constants from `constants/apiLimits.ts` — ported to `src/prompt_constants.py`
@@ -238,6 +246,7 @@ Done:
 - [x] Manifest-based remote runtime summary injection
 - [x] Manifest/env-based search runtime summary injection
 - [x] Manifest-based account runtime summary injection
+- [x] Local LSP runtime summary injection
 - [x] Manifest-based plan runtime summary injection
 - [x] Manifest-based task runtime summary injection
 
@@ -265,6 +274,7 @@ Done (37 slash command names in 29 specs):
 - [x] `/help`, `/commands`
 - [x] `/context`, `/usage`
 - [x] `/context-raw`, `/env`
+- [x] `/token-budget`, `/budget`
 - [x] `/mcp` (with subcommands: `tools`, `tool <name>`)
 - [x] `/search` (with subcommands: `providers`, `provider`, `use`)
 - [x] `/remote` (with `enter`, `exit`)
@@ -368,6 +378,7 @@ Missing npm slash commands (from `src/commands/` — 80+ commands total):
 - [x] `search_list_providers`
 - [x] `search_activate_provider`
 - [x] `web_search`
+- [x] `LSP`
 - [x] `tool_search`
 - [x] `sleep`
 - [x] `ask_user_question`
@@ -420,7 +431,7 @@ Core tools needing full port:
 - [ ] `AgentTool` — Sub-agent spawning with built-in agents (explore, general-purpose, verification, plan, claudeCodeGuide, statusline), fork support, agent memory/snapshots, resume agent, color management
 - [ ] `SkillTool` — Skill execution with bundled skills
 - [ ] `BriefTool` — Brief mode with attachments and file upload
-- [ ] `LSPTool` — Language Server Protocol (diagnostics, go-to-definition, references, hover, symbol search, formatting)
+- [ ] `LSPTool` — Full upstream LSP fidelity beyond the current local heuristic runtime (server-backed diagnostics, go-to-definition, references, hover, symbol search, formatting)
 - [ ] `PowerShellTool` — Full PowerShell execution with security, path validation, CLM types, git safety
 - [ ] `REPLTool` — Interactive REPL with primitive tools (ant-only)
 - [ ] `MCPTool` — Full MCP tool execution with collapse classification
@@ -773,7 +784,7 @@ Mirrored / scaffold areas needing real implementation:
 
 ### Tier 1 — Core Feature Gaps (highest user impact)
 - [x] Full BashTool security parity (sed validation, path validation, sandbox, destructive command warnings, command semantics) → `src/bash_security.py`
-- [ ] LSP tool integration for code intelligence
+- [x] LSP tool integration for code intelligence
 - [ ] Full AgentTool with built-in agent types (explore, general-purpose, verification, plan)
 - [ ] Auto-compact and context collapse from `query.ts`
 - [ ] Full compact service (autoCompact, microCompact, sessionMemoryCompact)

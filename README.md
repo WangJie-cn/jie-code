@@ -53,6 +53,8 @@
 | 🆕 | **Remote Trigger Runtime** | Local remote triggers with create/update/run flows similar to the npm remote trigger surface |
 | 🆕 | **Worktree Runtime** | Managed git worktrees with mid-session cwd switching, slash commands, and CLI flows |
 | 🆕 | **Tokenizer-Aware Context** | Cached tokenizer backends with heuristic fallback for `/context`, `/status`, and compaction |
+| 🆕 | **Prompt Budget Preflight** | Preflight prompt-length validation, token-budget reporting, and auto-compact/context collapse before backend failures |
+| 🆕 | **LSP Runtime** | Local LSP-style code intelligence for definitions, references, hover, symbols, call hierarchy, and diagnostics |
 | 🆕 | **Daemon Commands** | Local `daemon start/ps/logs/attach/kill` wrapper over background agent sessions |
 | 🆕 | **Background Sessions** | Local `agent-bg`, `agent-ps`, `agent-logs`, `agent-attach`, and `agent-kill` flows |
 | 🆕 | **Testing Guide** | Comprehensive [TESTING_GUIDE.md](TESTING_GUIDE.md) with commands for every feature |
@@ -99,8 +101,10 @@ Built on the public porting workspace from [instructkr/claw-code](https://github
 | 🧭 **Workflow Runtime** | Manifest-backed workflows with slash commands, CLI inspection, and recorded runs |
 | ⏰ **Remote Triggers** | Local remote triggers with create/update/run flows and npm-style trigger actions |
 | 🪝 **Hook & Policy Runtime** | Trust reporting, safe env, managed settings, tool blocking, and budget overrides |
+| 🧠 **LSP Code Intelligence** | Local LSP-style definitions, references, hover, symbols, diagnostics, and call hierarchy |
 | 🧠 **Context Engine** | Automatic context building with CLAUDE.md discovery, compaction, and snipping |
 | 🔢 **Tokenizer-Aware Accounting** | Model-aware token counting with cached tokenizer backends and fallback heuristics |
+| 📏 **Prompt Budgeting** | Soft/hard prompt-window checks, token-budget reports, and preflight context collapse |
 | 🔄 **Session Persistence** | Save and resume agent sessions with file-history replay |
 | 🗂️ **Background Sessions** | `agent-bg` and local daemon wrappers for background runs, logs, attach, and kill |
 | 💰 **Cost & Budget Control** | Token budgets, cost limits, tool-call caps, model-call caps |
@@ -137,6 +141,8 @@ Built on the public porting workspace from [instructkr/claw-code](https://github
 - [x] Truncated-response continuation flow
 - [x] Auto-snip and auto-compact context reduction
 - [x] Reactive compaction retry on prompt-too-long errors
+- [x] Preflight prompt-length validation and token-budget reporting
+- [x] Preflight auto-compact/context collapse before backend prompt-too-long failures
 - [x] Cost tracking and usage budget enforcement
 - [x] Token, tool-call, model-call, and session-turn budgets
 - [x] Structured output / JSON schema response mode
@@ -148,6 +154,7 @@ Built on the public porting workspace from [instructkr/claw-code](https://github
 - [x] Local remote runtime: manifest discovery, profile listing, connect/disconnect persistence, and CLI/slash flows
 - [x] Local hook and policy runtime with trust reporting, safe env, tool blocking, and budget overrides
 - [x] Local config runtime: config discovery, effective settings, source inspection, and config mutation
+- [x] Local LSP runtime: definitions, references, hover, symbols, diagnostics, and call hierarchy
 - [x] Local account runtime: profile discovery, login/logout state, and account CLI/slash flows
 - [x] Local ask-user runtime: queued answers, history, and ask-user CLI/slash flows
 - [x] Local team runtime: persisted teams, team messages, and team CLI/slash flows
@@ -217,6 +224,8 @@ claw-code/
 │   ├── account_runtime.py        # Local account profiles, login/logout state, account CLI support
 │   ├── ask_user_runtime.py       # Local ask-user queued answers and interaction history
 │   ├── config_runtime.py         # Local workspace config/settings discovery and mutation
+│   ├── lsp_runtime.py            # Local LSP-style code intelligence and diagnostics
+│   ├── token_budget.py           # Prompt-window budgeting and preflight prompt-length validation
 │   ├── plan_runtime.py           # Persistent plan runtime and plan sync
 │   ├── task_runtime.py           # Persistent task runtime and task execution
 │   ├── task.py                   # Task state model and task dataclasses
@@ -436,6 +445,7 @@ python3 -m src.main agent \
 | `agent-prompt` | Show the assembled system prompt |
 | `agent-context` | Show estimated context usage |
 | `agent-context-raw` | Show the raw context snapshot |
+| `token-budget` | Show prompt-window budget, reserves, and soft/hard input limits |
 | `agent-resume <id> <prompt>` | Resume a saved session |
 
 ### Runtime Utility Commands
@@ -509,6 +519,7 @@ These are handled **locally** before the model loop:
 | `/help` | `/commands` | Show built-in slash commands |
 | `/context` | `/usage` | Show estimated session context usage |
 | `/context-raw` | `/env` | Show raw environment & context snapshot |
+| `/token-budget` | `/budget` | Show prompt-window budget, reserves, and soft/hard input limits |
 | `/mcp` | — | Show MCP runtime status, tools, or a single MCP tool |
 | `/resources` | — | List MCP resources |
 | `/resource` | — | Read an MCP resource by URI |
@@ -541,6 +552,7 @@ These are handled **locally** before the model loop:
 ```bash
 python3 -m src.main agent "/help"
 python3 -m src.main agent "/context" --cwd .
+python3 -m src.main agent "/token-budget" --cwd .
 python3 -m src.main agent "/tools" --cwd .
 python3 -m src.main agent "/status" --cwd .
 ```
