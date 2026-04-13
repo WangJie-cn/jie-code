@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -16,6 +17,11 @@ JIE_LOCAL_SETTINGS_PATH = JIE_CONFIG_DIR / 'settings.local.json'
 LEGACY_CONFIG_PATHS = (
     Path('.claw-config.json'),
     Path('.codex-config.json'),
+)
+# Codex YAML config (Phase 5)
+CODEX_YAML_PATHS = (
+    Path('.codex') / 'config.yaml',
+    Path('.codex') / 'config.yml',
 )
 
 
@@ -206,6 +212,14 @@ def _discover_source_paths(cwd: Path) -> tuple[tuple[str, Path], ...]:
         ('jie', (cwd / JIE_SETTINGS_PATH).resolve()),
         ('jie-local', (cwd / JIE_LOCAL_SETTINGS_PATH).resolve()),
     ]
+    # Codex YAML config (Phase 5 — Codex compatibility)
+    codex_home = os.environ.get('CODEX_HOME', '')
+    if codex_home:
+        candidates.append(('codex-home', (Path(codex_home) / 'config.json').resolve()))
+    for yaml_path in CODEX_YAML_PATHS:
+        resolved = (cwd / yaml_path).resolve()
+        if resolved.exists() and resolved.is_file():
+            candidates.append(('codex-yaml', resolved))
     discovered: list[tuple[str, Path]] = []
     seen: set[Path] = set()
     for source_name, path in candidates:
@@ -218,10 +232,47 @@ def _discover_source_paths(cwd: Path) -> tuple[tuple[str, Path], ...]:
 
 def _load_json_object(path: Path) -> dict[str, Any] | None:
     try:
-        payload = json.loads(path.read_text(encoding='utf-8'))
-    except (OSError, json.JSONDecodeError):
+        text = path.read_text(encoding='utf-8')
+    except OSError:
+        return None
+    # YAML files (Codex config.yaml) — minimal key:value parser, no external deps
+    if path.suffix in ('.yaml', '.yml'):
+        return _parse_simple_yaml(text)
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
         return None
     return dict(payload) if isinstance(payload, dict) else None
+
+
+def _parse_simple_yaml(text: str) -> dict[str, Any] | None:
+    """Minimal YAML parser for flat key: value configs (no nested structures)."""
+    result: dict[str, Any] = {}
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith('#'):
+            continue
+        if ':' not in stripped:
+            continue
+        key, _, value = stripped.partition(':')
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if not key:
+            continue
+        # Try to coerce to int/float/bool
+        if value.lower() in ('true', 'yes'):
+            result[key] = True
+        elif value.lower() in ('false', 'no'):
+            result[key] = False
+        else:
+            try:
+                result[key] = int(value)
+            except ValueError:
+                try:
+                    result[key] = float(value)
+                except ValueError:
+                    result[key] = value
+    return result if result else None
 
 
 def _flatten_keys(payload: dict[str, Any], *, prefix: str = '') -> tuple[str, ...]:

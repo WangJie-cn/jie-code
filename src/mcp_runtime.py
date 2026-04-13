@@ -66,6 +66,7 @@ class MCPRuntime:
             manifest_resources, manifest_servers = _load_manifest(path)
             resources.extend(manifest_resources)
             servers.extend(manifest_servers)
+        servers.extend(_discover_settings_mcp_servers())
         return cls(
             resources=tuple(resources),
             servers=tuple(_dedupe_servers(servers)),
@@ -385,6 +386,50 @@ def _discover_manifest_paths(
         remember(root / '.codex-mcp.json')
         remember(root / 'mcp.json')
     return tuple(candidates)
+
+
+def _discover_settings_mcp_servers() -> list[MCPServerProfile]:
+    """Discover MCP servers from Claude Code and jie-code user config files.
+
+    Claude Code stores MCP servers in ~/.claude.json under 'mcpServers'.
+    jie-code stores them in ~/.jie/settings.json under 'mcpServers'.
+    """
+    settings_paths = [
+        Path.home() / '.claude.json',          # Claude Code user-level MCP config
+        Path.home() / '.jie' / 'settings.json',  # jie-code user config
+        Path.home() / '.claude' / 'settings.json',  # Claude Code project settings (fallback)
+    ]
+    servers: list[MCPServerProfile] = []
+    for settings_path in settings_paths:
+        if not settings_path.exists() or not settings_path.is_file():
+            continue
+        try:
+            payload = json.loads(settings_path.read_text(encoding='utf-8'))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(payload, dict):
+            continue
+        raw_mcp_servers = payload.get('mcpServers')
+        if not isinstance(raw_mcp_servers, dict):
+            continue
+        for server_name, item in raw_mcp_servers.items():
+            if not isinstance(server_name, str) or not server_name.strip():
+                continue
+            if not isinstance(item, dict):
+                continue
+            # settings.json stores command + args as a flat 'command' string or
+            # as separate 'command'/'args' fields — normalise to the latter form.
+            raw_command = item.get('command')
+            if isinstance(raw_command, str) and raw_command.strip():
+                # Already in split form; _extract_server_profile handles the rest.
+                server = _extract_server_profile(
+                    server_name.strip(), item, manifest_path=settings_path
+                )
+            else:
+                continue
+            if server is not None:
+                servers.append(server)
+    return servers
 
 
 def _load_manifest(path: Path) -> tuple[list[MCPResource], list[MCPServerProfile]]:

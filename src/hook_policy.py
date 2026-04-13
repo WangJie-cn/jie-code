@@ -181,6 +181,7 @@ def _discover_policy_paths(
     roots.extend(Path(path).resolve() for path in additional_working_directories)
 
     for root in roots:
+        remember(root / '.jie-policy.json')
         remember(root / '.claw-policy.json')
         remember(root / '.codex-policy.json')
         remember(root / '.claw-hooks.json')
