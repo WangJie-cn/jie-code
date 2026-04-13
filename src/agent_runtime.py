@@ -45,6 +45,7 @@ from .agent_types import (
     ToolExecutionResult,
     UsageStats,
 )
+from .backend_router import create_client, detect_backend
 from .openai_compat import OpenAICompatClient, OpenAICompatError
 from .plan_runtime import PlanRuntime
 from .plugin_runtime import PluginRuntime
@@ -109,6 +110,7 @@ class LocalCodingAgent:
     team_runtime: TeamRuntime | None = None
     workflow_runtime: WorkflowRuntime | None = None
     worktree_runtime: WorktreeRuntime | None = None
+    backend: str = 'auto'
     last_session: AgentSessionState | None = field(default=None, init=False, repr=False)
     last_run_result: AgentRunResult | None = field(default=None, init=False, repr=False)
     cumulative_usage: UsageStats = field(default_factory=UsageStats, init=False, repr=False)
@@ -195,7 +197,7 @@ class LocalCodingAgent:
         if virtual_tools:
             registry = {**registry, **virtual_tools}
         self.tool_registry = registry
-        self.client = OpenAICompatClient(self.model_config)
+        self.client = create_client(self.model_config, backend=self.backend)
         self.tool_context = build_tool_context(
             self.runtime_config,
             tool_registry=self.tool_registry,
@@ -221,7 +223,7 @@ class LocalCodingAgent:
 
     def set_model(self, model: str) -> None:
         self.model_config = replace(self.model_config, model=model)
-        self.client = OpenAICompatClient(self.model_config)
+        self.client = create_client(self.model_config, backend=self.backend)
 
     def clear_runtime_state(self) -> None:
         self.last_session = None

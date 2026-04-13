@@ -8,8 +8,11 @@ from typing import Any
 
 
 DEFAULT_CONFIG_DIR = Path('.claude')
+JIE_CONFIG_DIR = Path('.jie')
 PROJECT_SETTINGS_PATH = DEFAULT_CONFIG_DIR / 'settings.json'
 LOCAL_SETTINGS_PATH = DEFAULT_CONFIG_DIR / 'settings.local.json'
+JIE_SETTINGS_PATH = JIE_CONFIG_DIR / 'settings.json'
+JIE_LOCAL_SETTINGS_PATH = JIE_CONFIG_DIR / 'settings.local.json'
 LEGACY_CONFIG_PATHS = (
     Path('.claw-config.json'),
     Path('.codex-config.json'),
@@ -200,6 +203,8 @@ def _discover_source_paths(cwd: Path) -> tuple[tuple[str, Path], ...]:
         ('legacy-codex', (cwd / LEGACY_CONFIG_PATHS[1]).resolve()),
         ('project', (cwd / PROJECT_SETTINGS_PATH).resolve()),
         ('local', (cwd / LOCAL_SETTINGS_PATH).resolve()),
+        ('jie', (cwd / JIE_SETTINGS_PATH).resolve()),
+        ('jie-local', (cwd / JIE_LOCAL_SETTINGS_PATH).resolve()),
     ]
     discovered: list[tuple[str, Path]] = []
     seen: set[Path] = set()

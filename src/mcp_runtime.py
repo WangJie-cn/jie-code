@@ -379,6 +379,7 @@ def _discover_manifest_paths(
     roots.extend(Path(path).resolve() for path in additional_working_directories)
 
     for root in roots:
+        remember(root / '.jie-mcp.json')
         remember(root / '.claw-mcp.json')
         remember(root / '.mcp.json')
         remember(root / '.codex-mcp.json')

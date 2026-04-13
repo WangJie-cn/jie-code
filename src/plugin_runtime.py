@@ -393,6 +393,7 @@ def _discover_plugin_manifest_paths(
     roots = _walk_upwards(cwd.resolve())
     roots.extend(Path(path).resolve() for path in additional_working_directories)
     for root in roots:
+        remember(root / '.jie-plugin' / 'plugin.json')
         remember(root / '.codex-plugin' / 'plugin.json')
         remember(root / '.claw-plugin' / 'plugin.json')
         plugins_dir = root / 'plugins'

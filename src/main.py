@@ -58,10 +58,12 @@ from .tools import execute_tool, get_tool, get_tools, render_tool_index
 
 
 def _add_agent_common_args(parser: argparse.ArgumentParser, *, include_backend: bool) -> None:
-    parser.add_argument('--model', default=os.environ.get('OPENAI_MODEL', 'Qwen/Qwen3-Coder-30B-A3B-Instruct'))
+    parser.add_argument('--profile', default=None, help='Use a predefined model profile (e.g. anthropic-proxy, local-qwen, ollama, openrouter)')
+    parser.add_argument('--backend', default='auto', choices=['auto', 'anthropic', 'openai'], help='LLM backend (default: auto-detect)')
+    parser.add_argument('--model', default=os.environ.get('OPENAI_MODEL') or os.environ.get('ANTHROPIC_MODEL', 'Qwen/Qwen3-Coder-30B-A3B-Instruct'))
     if include_backend:
-        parser.add_argument('--base-url', default=os.environ.get('OPENAI_BASE_URL', 'http://127.0.0.1:8000/v1'))
-        parser.add_argument('--api-key', default=os.environ.get('OPENAI_API_KEY', 'local-token'))
+        parser.add_argument('--base-url', default=os.environ.get('OPENAI_BASE_URL') or os.environ.get('ANTHROPIC_BASE_URL', 'http://127.0.0.1:8000/v1'))
+        parser.add_argument('--api-key', default=os.environ.get('OPENAI_API_KEY') or os.environ.get('ANTHROPIC_API_KEY', 'local-token'))
         parser.add_argument('--temperature', type=float, default=0.0)
         parser.add_argument('--timeout-seconds', type=float, default=120.0)
         parser.add_argument('--input-cost-per-million', type=float, default=0.0)
@@ -130,11 +132,25 @@ def _build_runtime_config(args: argparse.Namespace) -> AgentRuntimeConfig:
     )
 
 
-def _build_model_config(args: argparse.Namespace) -> ModelConfig:
-    return ModelConfig(
+def _build_model_config(args: argparse.Namespace) -> tuple[ModelConfig, str]:
+    """Build ModelConfig from CLI args. Returns (config, backend_hint)."""
+    profile_name = getattr(args, 'profile', None)
+    backend_hint = getattr(args, 'backend', 'auto')
+
+    if profile_name:
+        from .profiles import resolve_profile
+        config, profile_backend = resolve_profile(profile_name)
+        # CLI overrides profile values if explicitly provided
+        if args.model != 'Qwen/Qwen3-Coder-30B-A3B-Instruct':
+            config = replace(config, model=args.model)
+        if backend_hint != 'auto':
+            profile_backend = backend_hint
+        return config, profile_backend
+
+    config = ModelConfig(
         model=args.model,
-        base_url=getattr(args, 'base_url', os.environ.get('OPENAI_BASE_URL', 'http://127.0.0.1:8000/v1')),
-        api_key=getattr(args, 'api_key', os.environ.get('OPENAI_API_KEY', 'local-token')),
+        base_url=getattr(args, 'base_url', os.environ.get('OPENAI_BASE_URL') or os.environ.get('ANTHROPIC_BASE_URL', 'http://127.0.0.1:8000/v1')),
+        api_key=getattr(args, 'api_key', os.environ.get('OPENAI_API_KEY') or os.environ.get('ANTHROPIC_API_KEY', 'local-token')),
         temperature=getattr(args, 'temperature', 0.0),
         timeout_seconds=getattr(args, 'timeout_seconds', 120.0),
         pricing=ModelPricing(
@@ -146,6 +162,7 @@ def _build_model_config(args: argparse.Namespace) -> ModelConfig:
             ),
         ),
     )
+    return config, backend_hint
 
 
 def _load_output_schema_config(args: argparse.Namespace) -> OutputSchemaConfig | None:
@@ -164,12 +181,14 @@ def _load_output_schema_config(args: argparse.Namespace) -> OutputSchemaConfig |
 
 
 def _build_agent(args: argparse.Namespace) -> LocalCodingAgent:
+    model_config, backend_hint = _build_model_config(args)
     return LocalCodingAgent(
-        model_config=_build_model_config(args),
+        model_config=model_config,
         runtime_config=_build_runtime_config(args),
         custom_system_prompt=args.system_prompt,
         append_system_prompt=args.append_system_prompt,
         override_system_prompt=args.override_system_prompt,
+        backend=backend_hint,
     )
 
 
@@ -539,7 +558,7 @@ def _run_agent_chat_loop(
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description='Python porting workspace for the Claude Code rewrite effort')
+    parser = argparse.ArgumentParser(description='jie-code: Personal AI coding CLI')
     subparsers = parser.add_subparsers(dest='command', required=True)
     subparsers.add_parser('summary', help='render a Markdown summary of the Python porting workspace')
     subparsers.add_parser('manifest', help='print the current Python workspace manifest')
